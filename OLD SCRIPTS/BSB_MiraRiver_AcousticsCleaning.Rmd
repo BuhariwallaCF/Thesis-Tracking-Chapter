@@ -1,0 +1,186 @@
+---
+title: "BSB_Mira River — Acoustics Cleaning Script"
+author: "Colin F. Buhariwalla"
+date: "June 15, 2016"
+output: html_document
+---
+
+# this script is to be used for each analysis invloving Mira River Data. It has been scrubbed & its purpose is to stop the repetition from older scripts.
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+```{r}
+require(lubridate)
+require(plyr)
+require(dplyr)
+require(ggplot2)
+```
+
+read in data and metadata
+
+```{r}
+mr.df <- read.csv("~/Desktop/Data/R/Data Files/MIRA_RIVER_ALL_YEARS_TIME&STATION_CORRECTED.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+tags.df <- read.csv("~/Desktop/Data/R/Data Files/BSB_tagging.csv", stringsAsFactors = FALSE, skip = 4, header = TRUE, sep = ",", dec = "." )
+stn.df <- read.csv("~/Desktop/Data/R/Data Files/bsb_condensed_metadata_2012-2015_UpdatedStations.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+```
+
+```{r}
+mr.df <- mr.df[-c(4,5,6,7,9,10)]
+names(mr.df) <-c("date","receiver","tag", "station")
+mr.df$id <- as.factor(unlist(strsplit(mr.df$tag, split = "-"))[3*(1:length(mr.df$tag))]) 
+mr.df$receiver <- as.character(unlist(strsplit(mr.df$receiver, split = "-"))[2*(1:length(mr.df$receiver))])
+
+mr.df$ddate <- ymd(substr(mr.df$date, 1, 10))
+mr.df$date <- ymd_hms(mr.df$date, tz = "UTC")
+mr.df$day <- day(mr.df$date)
+mr.df$month <- month(mr.df$date)
+mr.df$year <- year(mr.df$date)
+
+tags.df<- tags.df[1:length(tags.df[grep("VEMCO",tags.df$TAG_MANUFACTURER)]),] ## remove the NA's introduced during the import
+tags.df <- tags.df[,-c(33:48)]
+
+# set up date and time within the tags.df dataframe
+tags.df$date <- gsub("T", " ", tags.df$UTC_RELEASE_DATE_TIME,) # this allows you to convert date/time md to posix
+tags.df$ddate <-  ymd(substr(tags.df$date, 1, 10))
+tags.df$date <- ymd_hms(tags.df$date, tz = "UTC")
+tags.df$id <- as.factor(tags.df$TAG_ID_CODE) ## need to do this to keep str() same across dfs ## EDIT: CHANGED TO FACTOR ABOVE.. SEE HOW IT WORKS
+
+#colin's code to filter out other tag id's that are not deployed by me 
+# subset the det det based on my tag id's ## eliminated 2144 detections
+tag.id <- as.list(as.character(na.omit(tags.df$TAG_ID_CODE)))
+mr.df <- mr.df[mr.df$id %in% tag.id,] 
+
+### need to get r to eliminate any row that is not populated (will cause a NA's)
+### length of TAG_MODEL that is populated
+
+
+
+## need to have a day column in the DET and TAGS
+
+#### Clean up dataframes ####
+mr.df <- arrange(mr.df, date)
+mr.df <- distinct(mr.df) # remove any duplicates 
+
+
+### Clean up stations -- Colin's script ####
+mr.df$station <- ifelse(mr.df$station == "01"| mr.df$station =="001", "1",
+                         ifelse(mr.df$station == "02"| mr.df$station =="002", "2",
+                                ifelse(mr.df$station == "03"| mr.df$station =="003", "3",
+                                       ifelse(mr.df$station == "04"| mr.df$station =="004", "4",
+                                              ifelse(mr.df$station == "05"| mr.df$station =="005", "5",
+                                                     ifelse(mr.df$station == "06"| mr.df$station =="006", "6",
+                                                            ifelse(mr.df$station == "07"| mr.df$station =="007", "7",
+                                                                   ifelse(mr.df$station == "08"| mr.df$station =="008", "8",
+                                                                          ifelse(mr.df$station == "09"| mr.df$station =="009", "9",
+                                                                                 ifelse(mr.df$station == "10"| mr.df$station =="010", "10",
+                                                                                        ifelse(mr.df$station == "11"| mr.df$station =="011"| mr.df$station =="0011", "11",
+                                                                                               ifelse(mr.df$station == "12"| mr.df$station =="012", "12",
+                                                                                                      ifelse(mr.df$station == "13"| mr.df$station =="013", "13",
+                                                                                                             ifelse(mr.df$station == "14"| mr.df$station =="014", "14",
+                                                                                                                    ifelse(mr.df$station == "15"| mr.df$station =="015", "15",
+                                                                                                                           ifelse(mr.df$station == "16"| mr.df$station =="016", "16",
+                                                                                                                                  ifelse(mr.df$station == "17"| mr.df$station =="017", "17",
+                                                                                                                                         ifelse(mr.df$station == "18"| mr.df$station =="018", "18",
+                                                                                                                                                ifelse(mr.df$station == "19"| mr.df$station =="019", "19",
+                                                                                                                                                       ifelse(mr.df$station == "20"| mr.df$station =="020", "20",
+                                                                                                                                                              ifelse(mr.df$station == "21"| mr.df$station =="021", "21", "ERROR" ))))))))))))))))))))) 
+## When I want to incorporate MR_13.5 in analysis, I can replace Error with mr.df$station
+                                                                                                                    
+
+mr.df <- mr.df[!mr.df$station == "NA",]
+mr.df <- mr.df[!mr.df$station == "ERROR",] ### Tag id 33162  was used for a range test and this escaped above filtering
+mr.df$station <- as.numeric(mr.df$station)
+
+```
+
+Cleaning up Stations
+
+```{r}
+stn.df <-stn.df[,-c(4:7)]
+names(stn.df)<- c("station", "depl_date", "sn", "recov_date")
+stn.df$station <- as.numeric(stn.df$station)
+stn.df$depl_date <- gsub("T", " ", stn.df$depl_date,) ; stn.df$recov_date <- gsub("T", " ", stn.df$recov_date,) ### changing the date format - 3 & 10 refer to deploymenet and recovery date columns, respectively
+stn.df$depl_date <- ymd_hms(stn.df$depl_date, tz = "UTC")
+stn.df$recov_date <- ymd_hms(stn.df$recov_date, tz = "UTC")
+
+#need to remove stns 13.5,100.0,200.0 350.0
+
+stn.df <- stn.df[!stn.df$station %in% c(13.5, 100.0,200.0,350.0),]
+
+#### add RIVER ZONE ####
+# NEW 2016-06-13 this is based on natural divisions within the estuary (according to me)
+
+mr.df$zone <- ifelse(mr.df$station <= 4, 1,
+                     ifelse(mr.df$station >= 5 & mr.df$station <= 8, 2,
+                            ifelse(mr.df$station >= 9 & mr.df$station <= 15, 3,
+                                   ifelse(mr.df$station >= 16, 4, "ERROR")))) 
+
+stn.df$zone <- ifelse(stn.df$station <= 4, 1,
+                      ifelse(stn.df$station >= 5 & stn.df$station <= 8, 2,
+                             ifelse(stn.df$station >= 9 & stn.df$station <= 15, 3,
+                                    ifelse(stn.df$station >= 16, 4, "ERROR")))) 
+
+#etwd("~/Desktop/Data/R/Data Files")
+#write.csv(mr.df, file = "MiraRiver_StripedBass_AllDetects_Cleaned_2015-06-25.csv", row.names = FALSE)
+
+#### zone df ####
+zone.df <- read.csv("~/Desktop/Data/R/Data Files/bsb_mr_zones.csv")
+zone.df$depl_date <- ymd_hms(zone.df$depl_date)
+zone.df$recov_date <- ymd_hms(zone.df$recov_date)
+```
+
+```{r}
+#### period of activity - tag,station, & zone ####
+
+#### tag - identifying tag deployment, and last day of activity of tag, then create an interval of tag activity 
+
+tag.depl <- tags.df[,c("id", "date")]
+names(tag.depl) <- c("id","depl_date")
+
+tag.end <- mr.df %>%
+  group_by(id) %>%
+  select(id, date) %>%
+  summarise(
+    end_date = max(date)
+    )
+tag.df <- merge(tag.depl, tag.end, by = "id")
+
+### since the receivers were pulled on 2015-05-25, tag ids: 33160 33161 33158 33162 33159 were supposed to have tags active for longer period of time and will have a tag end date of 2015-05-26 so as to be included in all possible deployment time
+long.tags <- c("33160", "33161", "33158", "33162", "33159")
+
+ for(i in 1:length(tag.df$id)){
+  if(tag.df$id[i] %in% long.tags){tag.df$end_date[i] <- ymd_hms("2015-05-26 00:00:01")}}
+
+tag.df$tag_int <- new_interval(tag.df$depl_date, tag.df$end_date)
+tag.df$days_active <- tag.df$end_date - tag.df$depl_date
+
+#### station  - use the station metadata to create an interval of deployment and recovery 
+stn.df$station_int <- new_interval(stn.df$depl_date, stn.df$recov_date)
+stn.df$days_active <- stn.df$recov_date - stn.df$depl_date
+
+backup.stn.df <- stn.df
+
+#### ZONE
+
+zone.df$zone_int <- new_interval(zone.df$depl_date, zone.df$recov_date)
+
+
+#### remove tag data associated with tags prior to their official deployment ####
+remove.tags.df <- NULL
+for(i in tag.df$id){
+  temp <- mr.df[mr.df$id == i & mr.df$date < tag.df$depl_date[tag.df$id == i],]  
+  len <- length(temp$date)
+  temp$tagdate <- rep(tag.df$depl_date[tag.df$id == i], times = len)
+  remove.tags.df <- rbind(remove.tags.df, temp)
+}
+
+mr.df <- anti_join(mr.df, remove.tags.df, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remember
+remove(temp,remove.tags.df,backup.stn.df,tag.depl, tag.end)
+```
+
+FROM HERE GO TO GANT CHART. RESIDENCY INDEX, etc. 
+
+

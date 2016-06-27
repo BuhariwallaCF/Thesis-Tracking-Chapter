@@ -1,0 +1,171 @@
+---
+title: "Mira River - Comprehensive Acoustics"
+author: "Colin F. Buhariwalla"
+date: "January 9, 2015"
+output: html_document
+---
+This is an R Markddfn document. Markddfn is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markddfn see <http://rmarkddfn.rstudio.com>.
+
+## Notes:
+Do not include dates later than 2014-06-12/25 in system wide analysis ---> Also, MR 10, 9, 11.5 were removed on 2014-05-05; deployed in fresh water
+
+#Read in and clean up the data - #### NOTE: source for master file of data frame may change 
+```{r}
+
+library(lubridate)
+library(ggplot2)
+library(plyr)
+library(scales)
+library(gridExtra)
+
+df <- read.csv("~/Desktop/Data/vm - shared/VUE/Exports/VueExport_timeCorrectedDB_2014-09-25.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+df <- df[-c(4,5,9,10)] # removes: transmitter name & serial number, lattitude, longitude
+names(df) <-c("date","vr2","tag", "depth", "unit", "station")
+
+df$id <- as.character(unlist(strsplit(df$tag, split = "-"))[3*(1:length(df$tag))]) # seperate tags into id's ### MAYBE REMOVE THE FACTOR LEVEL HERE AND ADD IT SOMEWHERE ELSE.. WHEN I DELETE ALL THE EXTRANEOUS TAGS
+df$vr2 <- as.character(unlist(strsplit(df$vr2, split = "-"))[2*(1:length(df$vr2))]) # seperate vr2s to sn
+
+tags <- read.csv("~/Desktop/Data/OTN/Cape Breton/Metadata/Tagging/combined/BSB_tagging.csv", stringsAsFactors = FALSE, skip = 4, header = TRUE, sep = ",", dec = "." )# create a list of tags from a csv file
+tag.id <- as.list(as.character(na.omit(tags$TAG_ID_CODE)))
+remove(tags)
+
+df <- df[df$id %in% tag.id,] # subset the df df based on my tag id's ## eliminated 2144 detections
+  
+##### sensor conversion == y= mx + b == .43970x -1.7587
+df$depth <- 0.43970*df$depth-1.7587 #need to set to 1 decimal place? 
+df$unit <- "m"
+
+#### set up date and time
+df$date <- ymd_hms(df$date, tz = "UTC")
+df$day <- day(df$date)
+df$month <- month(df$date)
+df$year <- year(df$date)
+
+df.base <- df # backup
+
+#### Clean up stations 
+df$station <- ifelse(df$vr2 == "110142", "001",
+                      ifelse(df$vr2 == "112793" & df$date >= ymd_hms("2014-05-07 23:43:46"), "001",
+                             ifelse(df$vr2 == "112788", "002", 
+                                    ifelse(df$vr2 == "113681" & df$date <= ymd_hms("2013-07-31 00:00:00"), "003",
+                                           ifelse(df$vr2 == "113681" & df$date >= ymd_hms("2013-08-01 23:20:00"), "004",
+                                                  ifelse(df$vr2 == "112789" & df$date <= "2013-07-23 18:15:00", "004",
+                                                  ifelse(df$vr2 == "113678" & df$date < ymd_hms("2014-05-08 19:30:00"), "005",
+                                                         ifelse(df$vr2 == "105998" & df$date < ymd_hms("2013-11-09 20:52:00"), "006",
+                                                                ifelse(df$vr2 == "112794", "007",
+                                                                       ifelse(df$vr2 == "112790", "008",
+                                                                              ifelse(df$vr2 == "112793" & df$date < ymd_hms("2014-05-07 23:40:00"), "009",
+                                                                                     ifelse(df$vr2 == "112792" & df$date < ymd_hms("2014-05-08 20:00:00"), "010",
+                                                                                            ifelse(df$vr2 == "113682", "011",
+                                                                                                   ifelse(df$vr2 == "112791" & df$date < ymd_hms("2013-05-19 11:10:00"), "011.5",
+                                                                                                          ifelse(df$vr2 == "112791" & df$date > ymd_hms("2013-06-12 20:57:00"), "011.5",
+                                                                                                                ifelse(df$vr2 == "113684" & df$date < ymd_hms("2014-05-08 20:30:00"), "012",
+                                                                                                                       ifelse(df$vr2 == "105998" & df$date >= ymd_hms("2013-11-09 20:52:00"), "011.5",
+                   ifelse(df$vr2 == "113693", "013",
+                          ifelse(df$vr2 == "105999" & df$date <= ymd_hms("2013-07-23 18:03:00"), "013.5",
+                                 ifelse(df$vr2 == "105999" & df$date > ymd_hms("2013-07-23 18:03:00"), "NA",
+                          ifelse(df$vr2 == "113690", "014",
+                                 ifelse(df$vr2 == "113678" & df$date > ymd_hms("2014-05-08 19:30:00"), "015",
+                                       ifelse(df$vr2 == "112792" & df$date > ymd_hms("2014-05-08 20:00:00"), "016",
+                                              ifelse(df$vr2 == "113684" & df$date > ymd_hms("2014-05-08 20:30:00"), "017",
+                                                     ifelse(df$vr2 == "112791" & df$date >= ymd_hms("2013-05-19 11:20:00") & df$date <= ymd_hms("2013-06-12 20:50:00"), "018",
+                                                            ifelse(df$vr2 == "105998" & ymd_hms("2013-06-01 03:50:00") >= df$date & df$date < ymd_hms("2013-06-12 21:20:00"), "019", "ERROR"
+                                                                   ))))))))))))))))))))))))))                  
+                                                                                       
+
+df <- df[!df$station == "NA",] ## this removes the range test detections out of the mix (used tag 33162 during range test)
+
+### create a pooled station column
+
+p.s01<- c("001", "002", "003")
+p.s02 <- c("004", "005")
+p.s03 <- c("006", "007")
+p.s04 <- c("008", "009")
+p.s05 <- c("010", "011", "011.5")
+p.s06 <- c("012", "013", "013.5")
+p.s07 <- c("014")
+p.s08 <- c("015", "016", "017", "018")
+
+df$pool.stat <- ifelse(df$station %in% p.s01, "001",
+                       ifelse(df$station %in% p.s02, "002",
+                              ifelse( df$station %in% p.s03, "003",
+                                      ifelse(df$station %in% p.s04, "004",
+                                             ifelse(df$station %in% p.s05, "005",
+                                                    ifelse(df$station %in% p.s06, "006",
+                                                           ifelse(df$station %in% p.s07, "007",
+                                                                  ifelse(df$station %in% p.s08, "008", "ERROR"))))))))
+
+
+df.base <- df
+
+#remove dates outside of recent download : 
+  
+df <- df[!df$date > ymd("2014-06-12"),]
+df.2 <- df[!df$id == "48418",]
+```
+
+## Describe distribution throught the system: 
+### plot date on x axis, tag on y, group by section of river/station (colour), see what happens. -- idea/code based off of Laura's work
+```{r}
+plot.2012 <- ggplot(df[df$year == 2012,], aes(date, id, group = id)) + geom_point(aes(colour = station), size = 4) 
+plot.2012
+
+plot.2013 <- ggplot(df[df$year == 2013,], aes(date, id, group = id)) + geom_point(aes(colour = station), size = 4) 
+plot.2013
+
+plot.2014 <- ggplot(df[df$year == 2014,], aes(date, id, group = id)) + geom_point(aes(shape = pool.stat), size = 4) ## ugly - too many symbols
+plot.2014
+
+plot <- ggplot(df, aes(date, id, group = id)) + geom_point(aes(colour = station), size = 4) 
+plot
+```
+
+### plot distribution of tags based on the pooled station (pool.stat) (with-df-and without-df.2-48418)
+
+```{r}
+all.plot <- ggplot(df.2, aes(date, pool.stat)) + geom_point() + theme_bw() + scale_x_datetime(breaks = "2 months", labels=date_format("%b")) + facet_wrap(~year, scale = "free_x")
+
+all.plot
+## need to include time periods where there is a lack of coverage e.g: 
+# Until oct 2012 no MR07 or MR06... plot receiver coverage at each station
+# take updated metadata, use recovery and deployment sheets, merge based on id variable (consecutive deployments and stations), plot detection coverage 
+
+```
+
+
+#### next, plot number of individual reveivers per day 
+```{r}
+p.r.2014 <- ggplot(df[df$year == 2014,], aes(date, unique(station))) + geom_bar()
+p.r.2014
+```
+
+#### next, plot individuals movements as continuous (geom_point + geom_line) - potentially based on river km 
+
+#### WATER LEVEL VS FISH####
+
+```{r}
+### Pull in water level data
+
+wl <- read.csv("~/Desktop/Data/Hoboware/Mira River/CSV/AlbertBridgeWL_Jun2013_Nov2013.csv", stringsAsFactors = FALSE, header = TRUE)
+wl <- wl[-(4)]
+names(wl) <- c("date", "temp", "depth")
+wl$date <- ymd_hms(wl$date, tz = "UTC")
+
+wl <- wl[wl$date>= ymd_hms("2013-06-25 17:45:00") & wl$date <= ymd_hms("2013-11-10 21:19:00"),]
+
+## WL.2 deployment info deployed : 2013-11-11 20:45:00 (UTC); Recovered: 
+
+```
+
+
+```{r, echo=FALSE}
+depth <- df[complete.cases(df),]
+
+g.top <- wl.plot <- ggplot(wl[wl$date >= ymd_hms("2013-09-12 00:00:00") & wl$date < ymd_hms("2013-09-14 00:00:00"),], aes(date, depth)) + geom_line() + theme_bw()
+
+g.bottom <- ggplot(depth[depth$date >= ymd_hms("2013-09-12 00:00:00") & depth$date < ymd_hms("2013-09-14 00:00:00"),], aes(date, depth, group = id)) + geom_point() + facet_grid(id~., scale = "free_x") + scale_x_datetime(breaks = "2 hours", labels = date_format("%H")) + geom_line() 
+
+grid.arrange(g.top, g.bottom, heights = c(1/5, 4/5))
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

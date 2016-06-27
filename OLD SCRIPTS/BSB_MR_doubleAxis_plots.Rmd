@@ -1,0 +1,130 @@
+---
+title: "Double Y-axis Plots"
+author: "Colin F. Buhariwalla"
+date: "June 24, 2016"
+output: html_document
+---
+
+require(lubridate)
+require(reshape)
+require(dplyr)
+#require(ggplot2)
+
+### Code adapted from Jeff Beardsall, email on 2016-05-10 'pics and code'
+```{r}
+load up the data frame “d” attached as csv.  d$date is “character” format, and d$posix is “posix” format, and d$Date is “Date” format (see line below)
+d$Date <- as.Date(avg_month_depthtemp$posix, "%Y/%m/%d”)
+
+####  Double Y-Axis plot commands ####
+
+tiff(filename = “filename.tiff",height = 9, width = 16, units="cm",
+    res = 300) 	#set up .tiff file called “filename.tiff"
+par(las=2) #set axis titles parallel with axis
+par(mar = c(5.3,5,1,5)) #margins
+par(cex = 1.08) #text size
+plot(x = d$Date, y = d$meandepth, type = "b", pch = as.integer(d$d_type) + sp,
+    ylim = c(100, 0), xaxt = "n", xlab = NA, 
+    ylab = "Mean Depth (m)")
+axis(1, xax, format(xax,"%Y-%m"), las=2)
+mtext(side=1, "Date (YYYY-MM)", line = 4.2, las = 0, cex = 1.08)
+par(new = T)
+par(mar = c(6,5,3,5))
+plot(x = d$Date, d$meantemp, type = "b", pch = as.integer(d$d_type) + st,
+    ylim = c(0, 25), axes=F, xlab = NA, ylab = NA)
+axis(side = 4,las=2)
+mtext(side = 4, line = 3, 'Mean Temperature (C)', cex = 1.08, las=3)
+dev.off() #turn off device and create filename.tiff
+#### ####
+
+```
+
+data to work with 
+```{r}
+t.3 <- read.csv("~/Desktop/Data/R/Data Files/MR_OWT1_3m.csv", stringsAsFactors = F)
+t.6 <- read.csv("~/Desktop/Data/R/Data Files/MR_OWT2_6m.csv", stringsAsFactors = F)
+t.10 <- read.csv("~/Desktop/Data/R/Data Files/MR_OWT3_10m.csv", stringsAsFactors = F)
+
+
+
+```
+clean it up
+```{r}
+t.3 <- t.3[1:2]
+t.6 <- t.6[1:2]
+t.10 <- t.10[1:2]
+
+names(t.3) <- c("date", "temp")
+names(t.6) <- c("date", "temp")
+names(t.10) <- c("date", "temp")
+
+t.3$depth <- as.integer(3)
+t.6$depth <- as.integer(6)
+t.10$depth <- as.integer(10)
+
+traw <- bind_rows(t.3, t.6, t.10)
+traw$date <- ymd_hms(traw$date)
+traw$date <- traw$date+hours(4)
+traw$ddate <- ymd(paste(year(traw$date), month(traw$date), day(traw$date), sep = "-"))
+
+## delete any dates or times that are not in the deployment time 
+
+start <- ymd_hms("2014-11-05 00:00:00")
+end <- ymd_hms("2015-05-25 20:55:00")
+
+traw <- traw[traw$date >= start & traw$date <=end,]
+```
+
+
+```{r}
+tdf <- traw %>% group_by(ddate, depth) %>% summarise(mean_temp = mean(temp))
+```
+
+
+tiff(filename = “filename.tiff",height = 9, width = 16, units="cm",
+    res = 300) 	#set up .tiff file called “filename.tiff"
+par(las=2) #set axis titles parallel with axis
+par(mar = c(5.3,5,1,5)) #margins
+par(cex = 1.08) #text size
+plot(x = d$Date, y = d$meandepth, type = "b", pch = as.integer(d$d_type) + sp,
+    ylim = c(100, 0), xaxt = "n", xlab = NA, 
+    ylab = "Mean Depth (m)")
+axis(1, xax, format(xax,"%Y-%m"), las=2)
+mtext(side=1, "Date (YYYY-MM)", line = 4.2, las = 0, cex = 1.08)
+par(new = T)
+par(mar = c(6,5,3,5))
+plot(x = d$Date, d$meantemp, type = "b", pch = as.integer(d$d_type) + st,
+    ylim = c(0, 25), axes=F, xlab = NA, ylab = NA)
+axis(side = 4,las=2)
+mtext(side = 4, line = 3, 'Mean Temperature (C)', cex = 1.08, las=3)
+dev.off() #turn off device and create filename.tiff
+#### ####
+
+
+ma sheet
+```{r}
+
+tiff(filename = "filename.tiff", height = 9, width = 16, units = "cm", res = 300)
+par(las = 2) # ttitles parallel with axis
+par(mar = c(5.3,5,1,5)) #margins
+par(cex = 1.08)
+plot(x = tdf$ddate, y = tdf$depth, type = "b")
+axis(1, tdf$ddate, format(tdf$ddate, "%Y-%m"), las = 2)
+mtext(side=1, "Date (YYYY-MM)", line = 4.2, las = 0, cex = 1.08)
+par(new = T)
+par(mar = c(6,5,3,5))
+plot(x = tdf$ddate, tdf$mean_temp, type="b", pch = 16, xlab = NA, ylab = NA)
+axis(side = 4, las = 2)
+mtext(side = 4, line = 3, 'Mean Temperature (C)', cex = (1.08), las = 3)
+
+def.off()
+
+```
+
+
+You can also embed plots, for example:
+
+```{r, echo=FALSE}
+plot(cars)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
