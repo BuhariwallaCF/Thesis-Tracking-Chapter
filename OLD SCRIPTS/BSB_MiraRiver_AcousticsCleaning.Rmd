@@ -10,184 +10,151 @@ output: html_document
 ```{r}
 require(lubridate)
 require(dplyr)
+require(qdap)
 ```
 
 read in data and metadata
 ```{r}
-mr.df <- read.csv("Raw Data/MIRA_RIVER_ALL_YEARS_TIME&STATION_CORRECTED.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
-tag.df <- read.csv("Raw Data/BSB_MR_tagging.csv", stringsAsFactors = FALSE, skip = 4, header = TRUE, sep = ",", dec = "." )
-stn.df <- read.csv("Raw Data/bsb_condensed_metadata_2012-2015_UpdatedStations.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+mrdf <- read.csv("Raw Data/MIRA_RIVER_ALL_YEARS_TIME&STATION_CORRECTED.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+tagdf <- read.csv("Raw Data/BSB_MR_tagging.csv", stringsAsFactors = FALSE, skip = 4, header = TRUE, sep = ",", dec = "." )
+stndf <- read.csv("Raw Data/bsb_condensed_metadata_2012-2015_UpdatedStations.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
 ```
 
 use cleaning function. detailed cleaning instructions in function  
 ```{r}
 source("functions/acoustic_cleaning_fun.R")
-mr.df <- acoustic_cleaning_fun(mr.df)
+mrdf <- acoustic_cleaning_fun(mrdf)
 ```
 
 format the tag sheets into something useful 
 ```{r}
 source("functions/tag_cleaning_fun.R")
-tag.df <- tag_cleaning_fun(tag.df)
+tagdf <- tag_cleaning_fun(tagdf)
 ```
 
 filter out tags that don't belong to me, arrange data frame by date, and make sure there are no duplicates
 ```{r}
-mr.df <- mr.df[mr.df$id %in% tag.df$id,] # filters out 8060 detections 
-mr.df <- arrange(mr.df, date) # need dplyr
-mr.df <- distinct(mr.df) # same same 
+mrdf <- mrdf[mrdf$id %in% tagdf$id,] # filters out 8060 detections 
+mrdf <- arrange(mrdf, date) # need dplyr
+mrdf <- distinct(mrdf) # same same 
 ```
 
 now that there is a lull in the action, it may be a good time to enter calibrated sensor values
 ```{r}
 #sensor conversion formula  y = mx + b == .43970x -1.7587
-mr.df$sensor <- ifelse(mr.df$unit == "ADC", mr.df$sensor <- 0.43970*mr.df$sensor-1.7587, mr.df$sensor <- mr.df$sensor) 
-mr.df$unit <- ifelse(mr.df$unit == "ADC", "meters", mr.df$unit)
+mrdf$sensor <- ifelse(mrdf$unit == "ADC", mrdf$sensor <- 0.43970*mrdf$sensor-1.7587, mrdf$sensor <- mrdf$sensor) 
+mrdf$unit <- ifelse(mrdf$unit == "ADC", "meters", mrdf$unit)
 ```
 
 ugly ass station cleaning # NOTE: these station names are from the most recent VUE export where names were corrected to new station name list. These station names will differ from those in OTN matched detection files 
 ```{r}
 # clean up all station names 
-mr.df$station <- ifelse(mr.df$station == "01"| mr.df$station =="001", "1",
-                         ifelse(mr.df$station == "02"| mr.df$station =="002", "2",
-                                ifelse(mr.df$station == "03"| mr.df$station =="003", "3",
-                                       ifelse(mr.df$station == "04"| mr.df$station =="004", "4",
-                                              ifelse(mr.df$station == "05"| mr.df$station =="005", "5",
-                                                     ifelse(mr.df$station == "06"| mr.df$station =="006", "6",
-                                                            ifelse(mr.df$station == "07"| mr.df$station =="007", "7",
-                                                                   ifelse(mr.df$station == "08"| mr.df$station =="008", "8",
-                                                                          ifelse(mr.df$station == "09"| mr.df$station =="009", "9",
-                                                                                 ifelse(mr.df$station == "10"| mr.df$station =="010", "10",
-                                                                                        ifelse(mr.df$station == "11"| mr.df$station =="011"| mr.df$station =="0011", "11",
-                                                                                               ifelse(mr.df$station == "12"| mr.df$station =="012", "12",
-                                                                                                      ifelse(mr.df$station == "13"| mr.df$station =="013", "13",
-                                                                                                             ifelse(mr.df$station == "14"| mr.df$station =="014", "14",
-                                                                                                                    ifelse(mr.df$station == "15"| mr.df$station =="015", "15",
-                                                                                                                           ifelse(mr.df$station == "16"| mr.df$station =="016", "16",
-                                                                                                                                  ifelse(mr.df$station == "17"| mr.df$station =="017", "17",
-                                                                                                                                         ifelse(mr.df$station == "18"| mr.df$station =="018", "18",
-                                                                                                                                                ifelse(mr.df$station == "19"| mr.df$station =="019", "19",
-                                                                                                                                                       ifelse(mr.df$station == "20"| mr.df$station =="020", "20",
-                                                                                                                                                              ifelse(mr.df$station == "21"| mr.df$station =="021", "21", "ERROR" ))))))))))))))))))))) 
-## When I want to incorporate MR_13.5 in analysis, I can replace Error with mr.df$station
+mrdf$station <- ifelse(mrdf$station == "01"| mrdf$station =="001", "1",
+                         ifelse(mrdf$station == "02"| mrdf$station =="002", "2",
+                                ifelse(mrdf$station == "03"| mrdf$station =="003", "3",
+                                       ifelse(mrdf$station == "04"| mrdf$station =="004", "4",
+                                              ifelse(mrdf$station == "05"| mrdf$station =="005", "5",
+                                                     ifelse(mrdf$station == "06"| mrdf$station =="006", "6",
+                                                            ifelse(mrdf$station == "07"| mrdf$station =="007", "7",
+                                                                   ifelse(mrdf$station == "08"| mrdf$station =="008", "8",
+                                                                          ifelse(mrdf$station == "09"| mrdf$station =="009", "9",
+                                                                                 ifelse(mrdf$station == "10"| mrdf$station =="010", "10",
+                                                                                        ifelse(mrdf$station == "11"| mrdf$station =="011"| mrdf$station =="0011", "11",
+                                                                                               ifelse(mrdf$station == "12"| mrdf$station =="012", "12",
+                                                                                                      ifelse(mrdf$station == "13"| mrdf$station =="013", "13",
+                                                                                                             ifelse(mrdf$station == "14"| mrdf$station =="014", "14",
+                                                                                                                    ifelse(mrdf$station == "15"| mrdf$station =="015", "15",
+                                                                                                                           ifelse(mrdf$station == "16"| mrdf$station =="016", "16",
+                                                                                                                                  ifelse(mrdf$station == "17"| mrdf$station =="017", "17",
+                                                                                                                                         ifelse(mrdf$station == "18"| mrdf$station =="018", "18",
+                                                                                                                                                ifelse(mrdf$station == "19"| mrdf$station =="019", "19",
+                                                                                                                                                       ifelse(mrdf$station == "20"| mrdf$station =="020", "20",
+                                                                                                                                                              ifelse(mrdf$station == "21"| mrdf$station =="021", "21", "ERROR" ))))))))))))))))))))) 
+## When I want to incorporate MR_13.5 in analysis, I can replace Error with mrdf$station
                                                                                                                     
 
-mr.df <- mr.df[!mr.df$station == "NA",]
-mr.df <- mr.df[!mr.df$station == "ERROR",] ### Tag id 33162  was used for a range test and this escaped above filtering
-#mr.df$station <- as.numeric(mr.df$station) # this is not proper data etiquete 
+mrdf <- mrdf[!mrdf$station == "NA",]
+mrdf <- mrdf[!mrdf$station == "ERROR",] ### Tag id 33162  was used for a range test and this escaped above filtering
+#mrdf$station <- as.numeric(mrdf$station) # this is not proper data etiquete 
 
 ```
 
 Cleaning up Stations 
 ```{r}
 source("functions/station_cleaning_fun.R")
-stn.df <- station_cleaning_fun(stn.df)
+stndf <- station_cleaning_fun(stndf)
 ```
 
 Add River Zone* 
 ```{r}
 # add RIVER ZONE - *** this will change with the further analysis of the system wide water sampling files
 # NEW 2016-06-13 this is based on natural divisions within the estuary (according to me see above note)
-mr.df$zone <- ifelse(mr.df$station <= 4, 1,
-                     ifelse(mr.df$station >= 5 & mr.df$station <= 8, 2,
-                            ifelse(mr.df$station >= 9 & mr.df$station <= 15, 3,
-                                   ifelse(mr.df$station >= 16, 4, "ERROR")))) 
+mrdf$zone <- ifelse(mrdf$station <= 4, 1,
+                     ifelse(mrdf$station >= 5 & mrdf$station <= 8, 2,
+                            ifelse(mrdf$station >= 9 & mrdf$station <= 15, 3,
+                                   ifelse(mrdf$station >= 16, 4, "ERROR")))) 
 
-stn.df$zone <- ifelse(stn.df$station <= 4, 1,
-                      ifelse(stn.df$station >= 5 & stn.df$station <= 8, 2,
-                             ifelse(stn.df$station >= 9 & stn.df$station <= 15, 3,
-                                    ifelse(stn.df$station >= 16, 4, "ERROR")))) 
+stndf$zone <- ifelse(stndf$station <= 4, 1,
+                      ifelse(stndf$station >= 5 & stndf$station <= 8, 2,
+                             ifelse(stndf$station >= 9 & stndf$station <= 15, 3,
+                                    ifelse(stndf$station >= 16, 4, "ERROR")))) 
 ```
 
 zone df for possible deployment shit.. 
 ```{r}
-zone.df <- read.csv("Raw Data/bsb_mr_zones.csv")
-zone.df$depl_date <- ymd_hms(zone.df$depl_date)
-zone.df$recov_date <- ymd_hms(zone.df$recov_date)
-```
-
-function to work with tag data and station data # should be applicable for rest of shit
-```{r}
-tag_activity_function <- function(a, b){ # a = tag.data; b = acoustic.data 
-  
-  tag.end <- b %>% group_by(id) %>% select(id, date) %>% summarise(end_date = max(date))
-  a$depl_date <- a$date
-  a <- merge(a, tag.end, by = "id")
-  
-  
-}
+zonedf <- read.csv("Raw Data/bsb_mr_zones.csv")
+zonedf$depl_date <- ymd_hms(zonedf$depl_date)
+zonedf$recov_date <- ymd_hms(zonedf$recov_date)
 ```
 
 
 ```{r}
 # period of activity - tag,station, & zone #
 # tag - identifying tag deployment, and last day of activity of tag, then create an interval of tag activity 
+tagdf$depl_date <- tagdf$date
 
-tag.df$depl_date <- tag.df$date
-
-tag.end <- mr.df %>%
-  group_by(id) %>%
-  select(id, date) %>%
-  summarise(
-    end_date = max(date)
-    )
-tag.df <- merge(tag.df, tag.end, by = "id")
+tag.end <- mrdf %>% group_by(id) %>% select(id, date) %>% summarise(end_date = max(date))
+tagdf <- merge(tagdf, tag.end, by = "id")
 
 ### since the receivers were pulled on 2015-05-25, tag ids: 33160 33161 33158 33162 33159 were supposed to have tags active for longer period of time and will have a tag end date of 2015-05-26 so as to be included in all possible deployment time
 long.tags <- c("33160", "33161", "33158", "33162", "33159")
 
- for(i in 1:length(tag.df$id)){
-  if(tag.df$id[i] %in% long.tags){tag.df$end_date[i] <- ymd_hms("2015-05-26 00:00:01")}}
+ for(i in 1:length(tagdf$id)){
+  if(tagdf$id[i] %in% long.tags){tagdf$end_date[i] <- ymd_hms("2015-05-26 00:00:01")}}
+```
 
-tag.df$tag_int <- new_interval(tag.df$depl_date, tag.df$end_date)
-tag.df$days_active <- tag.df$end_date - tag.df$depl_date
+```{r}
 
+tagdf$tag_int <- new_interval(tagdf$depl_date, tagdf$end_date)
+tagdf$days_active <- tagdf$end_date - tagdf$depl_date
+## station  - use the station metadata to create an interval of deployment and recovery 
+stndf$station_int <- new_interval(stndf$depl_date, stndf$recov_date)
+stndf$days_active <- stndf$recov_date - stndf$depl_date
+## ZONE
+zonedf$zone_int <- new_interval(zonedf$depl_date, zonedf$recov_date)
 ```
 
 Remove all tag data associeated with tags prior to their official deployment
 ```{r}
 #### remove tag data associated with tags prior to their official deployment ####
-remove.tag.df <- NULL
-for(i in tag.df$id){
-  temp <- mr.df[mr.df$id == i & mr.df$date < tag.df$depl_date[tag.df$id == i],]  
+remove.tagdf <- NULL
+for(i in tagdf$id){
+  temp <- mrdf[mrdf$id == i & mrdf$date < tagdf$depl_date[tagdf$id == i],]  
   len <- length(temp$date)
-  temp$tagdate <- rep(tag.df$depl_date[tag.df$id == i], times = len)
-  remove.tag.df <- rbind(remove.tag.df, temp)
-  
-  remove(temp,remove.tag.df,backup.stn.df,tag.depl, tag.end)
+  temp$tagdate <- rep(tagdf$depl_date[tagdf$id == i], times = len)
+  remove.tagdf <- rbind(remove.tagdf, temp)
 }
 
-mr.df <- anti_join(mr.df, remove.tag.df, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remember
-
+mrdf <- anti_join(mrdf, remove.tagdf, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remember
 ```
 
-
-
+clean up the environment
 ```{r}
-#### station  - use the station metadata to create an interval of deployment and recovery 
-stn.df$station_int <- new_interval(stn.df$depl_date, stn.df$recov_date)
-stn.df$days_active <- stn.df$recov_date - stn.df$depl_date
-
-backup.stn.df <- stn.df
-
-#### ZONE
-
-zone.df$zone_int <- new_interval(zone.df$depl_date, zone.df$recov_date)
-
-
-#### remove tag data associated with tags prior to their official deployment ####
-remove.tag.df <- NULL
-for(i in tag.df$id){
-  temp <- mr.df[mr.df$id == i & mr.df$date < tag.df$depl_date[tag.df$id == i],]  
-  len <- length(temp$date)
-  temp$tagdate <- rep(tag.df$depl_date[tag.df$id == i], times = len)
-  remove.tag.df <- rbind(remove.tag.df, temp)
-}
-
-mr.df <- anti_join(mr.df, remove.tag.df, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remember
-remove(temp,remove.tag.df,backup.stn.df,tag.depl, tag.end)
+remove(temp,remove.tagdf,backup.stndf,tag.depl,tag.end, i, len, long.tags, acoustic_cleaning_fun, station_cleaning_fun, tag_cleaning_fun)
 ```
 
-FROM HERE GO TO GANT CHART. RESIDENCY INDEX, etc. 
+write out the new data files as csvs so they can be used for all future files
+```{r}
+mcsv_w(mrdf, stndf, tagdf, zonedf, dir="Data")
+```
 
-#write.csv(mr.df, file = "MiraRiver_StripedBass_AllDetects_Cleaned_2015-06-25.csv", row.names = FALSE)
