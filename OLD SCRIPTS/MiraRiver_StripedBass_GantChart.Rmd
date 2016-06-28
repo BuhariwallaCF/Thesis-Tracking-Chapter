@@ -28,74 +28,36 @@ require(grid)
 require(gridExtra)
 ```
 
-- to set the working directory... session, etc.
-```{r}
-setwd("~/Desktop/Data/R/Data Files")
-wd <- getwd()
-```
-
 - to read in the csvs with MB VUE data (for each year, 2012-2015)
 ```{r}
-mr.df <- read.csv("~/Desktop/Data/R/Data Files/MiraRiver_StripedBass_AllDetects_Cleaned_2015-06-25.csv", stringsAsFactors = FALSE)
-tag.df <- read.csv("~/Desktop/Data/R/Data Files/MiraRiver_StripedBass_TagMetadata_2015-06-25.csv", stringsAsFactors = FALSE)
-stn.df <- read.csv("~/Desktop/Data/R/Data Files/MiraRiver_StripedBass_StationMetadata_2015-06-25.csv", stringsAsFactors = F)
+mr.df <- read.csv("data/mrdf.csv", stringsAsFactors = FALSE)
+tag.df <- read.csv("data/tagdf.csv", stringsAsFactors = FALSE)
+stn.df <- read.csv("data/stndf.csv", stringsAsFactors = F)
+```
+
+
+```{r}
+source("functions/dates_and_times_fun.R")
+
+mr.df  <- dates_and_times_fun(mr.df)
+tag.df <- dates_and_times_fun(tag.df)
+stn.df <- dates_and_times_fun(stn.df)
 ```
 
 - format data and metadata - parse dates, set factors, create intervals 
 ```{r}
-mr.df$date <- ymd_hms(mr.df$date)
-mr.df$ddate <- ymd(mr.df$ddate)
-mr.df$id <- as.factor(mr.df$id)
-mr.df$station <- as.factor(mr.df$station)
-
-  
-tag.df$depl_date <- ymd_hms(tag.df$depl_date)
-tag.df$end_date <- ymd_hms(tag.df$end_date)
-tag.df$tag_int <- new_interval(tag.df$depl_date, tag.df$end_date, tz = "UTC")
-tag.df$id <- as.factor(tag.df$id)
-
-stn.df$depl_date <- ymd_hms(stn.df$depl_date)
-stn.df$recov_date <- ymd_hms(stn.df$recov_date)
-stn.df$station_int <- new_interval(stn.df$depl_date, stn.df$recov_date, tz = "UTC")
 stn.df <- stn.df[!stn.df$station %in% c(350, 200, 100, 13.5),]
-stn.df$station <- as.factor(stn.df$station)
-
-mr.df.backup <- mr.df
-tag.df.backup <- tag.df
-stn.df.backup <- stn.df
-
 ```
 
 
-- make sure that there are no tags in the data before they're into fish   
+- may be able to get rid of this shit   
 ```{r}
-remove.tags.df <- NULL
-for(i in tag.df$id){
-  temp <- mr.df[mr.df$id == i & mr.df$date < tag.df$depl_date[tag.df$id == i],]  
-  len <- length(temp$date)
-  temp$tagdate <- rep(tag.df$depl_date[tag.df$id == i], times = len)
-  remove.tags.df <- rbind(remove.tags.df, temp)
-}
-
-print(remove.tags.df %>% group_by(id) %>% summarise(n_distinct(date)))
-
-#  id n_distinct(date)
-#1  5736               21
-#2  5743                8
-#3 33159               22
-#4 33160                1
-#5 33162             1282
-
-mr.df <- anti_join(mr.df, remove.tags.df, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remember "In Hadley We Trust"  
-
 # also, there is a false detection in MR.df for tag 33158. Will need to run false filtering tool on my dataframe post ICFT
 trash <- mr.df[mr.df$id == 33158 & mr.df$year == 2013 & mr.df$month == 09,]
 
 mr.df <- anti_join(mr.df, trash, by = c("date", "id"))
 
 mr.df <- arrange(mr.df, date, id)
-
-
 ```
 
 - create 1 dectection record, per station, per day

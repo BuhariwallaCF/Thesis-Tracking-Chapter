@@ -24,205 +24,33 @@ require(ggplot2)
 
 ##### read in metadata (tag deployment, receiver deployment, and receiver recovery) and detection .CSVs #####
 
-# Path to files:
-#VUE database export (.csv file of detections), OTN tag, deployment, and recovery .CSV files
-det.csv <- "~/Desktop/Data/R/Data Files/MIRA_RIVER_ALL_YEARS_TIME&STATION_CORRECTED.csv" 
-tag.csv <- "~/Desktop/Data/R/Data Files/BSB_tagging.csv"
-
-#### Read in detections   
-# remove:transmitter name & serial number, sensor value, sensor unit lattitude, longitude
-#separate tag IDs and receiver SNs from the characters & coding spaces   
-
-# for Laura - Multiple Vue Database ('db') exports read into one data frame. 
-#files <- dir("file path", full.name = TRUE)
-#det.I <- files[grep("db", files)]
-#det.II <- lapply(det.I, "read.csv", header = TRUE, stringsAsFactors = FALSE, dec = ".") ## will delete the header
-#mr.df <- do.call("rbind", det.II) ## combine all csv files into one df
-
-#colin's read in - one database export 
-mr.df <- read.csv(det.csv, stringsAsFactors = FALSE, header = TRUE, dec = ".")
-#[1] "Date.and.Time..UTC." "Receiver"            "Transmitter"         "Transmitter.Name"    "Transmitter.Serial" 
-#[6] "Sensor.Value"        "Sensor.Unit"         "Station.Name"        "Latitude"            "Longitude"          
-mr.df <- mr.df[-c(4,5,6,7,9,10)]
-names(mr.df) <-c("date","receiver","tag", "station")
-mr.df$id <- as.factor(unlist(strsplit(mr.df$tag, split = "-"))[3*(1:length(mr.df$tag))]) 
-mr.df$receiver <- as.character(unlist(strsplit(mr.df$receiver, split = "-"))[2*(1:length(mr.df$receiver))])
-
-mr.df$ddate <- ymd(substr(mr.df$date, 1, 10))
-mr.df$date <- ymd_hms(mr.df$date, tz = "UTC")
-mr.df$day <- day(mr.df$date)
-mr.df$month <- month(mr.df$date)
-mr.df$year <- year(mr.df$date)
-
-#### read in Tags using csv of OTN tagging metadata sheet####
-
-# make sure that the tag md df is not screwed up by excel formatting going to the csv (creating blank spaces causing 'NA's)
-tags.df <- read.csv(tag.csv, stringsAsFactors = FALSE, skip = 4, header = TRUE, sep = ",", dec = "." )
-#[1] "ANIMAL_ID"                                        "TAG_TYPE"                                        
-#[3] "TAG_MANUFACTURER"                                 "TAG_MODEL"                                       
-#[5] "TAG_SERIAL_NUMBER"                                "TAG_ID_CODE"                                     
-#[7] "TAG_CODE_SPACE"                                   "TAG_IMPLANT_TYPE"                                
-#[9] "TAG_ACTIVATION_DATE"                              "EST_TAG_LIFE"                                    
-#[11] "TAGGER"                                           "TAG_OWNER_PI"                                    
-#[13] "TAG_OWNER_ORGANIZATION"                           "COMMON_NAME_E"                                   
-#[15] "SCIENTIFIC_NAME"                                  "CAPTURE_LOCATION"                                
-#[17] "CAPTURE_LATITUDE"                                 "CAPTURE_LONGITUDE"                               
-#[19] "WILD_OR_HATCHERY"                                 "STOCK"                                           
-#[21] "LENGTH..cm."                                      "WEIGHT..kg."                                     
-#[23] "LENGTH_TYPE"                                      "AGE"                                             
-#[25] "SEX"                                              "DNA_SAMPLE_TAKEN"                                
-#[27] "TREATMENT_TYPE"                                   "RELEASE_GROUP"                                   
-#[29] "RELEASE_LOCATION"                                 "RELEASE_LATITUDE"                                
-#[31] "RELEASE_LONGITUDE"                                "UTC_RELEASE_DATE_TIME"                           
-#[33] "CAPTURE_DEPTH..m."                                "TEMPERATURE_CHANGE..degrees.C."                  
-#[35] "HOLDING_TEMPERATURE..degrees.C."                  "SURGERY_LOCATION"                                
-#[37] "DATE_OF_SURGERY"                                  "SURGERY_LATITUDE"                                
-#[39] "SURGERY_LONGITUDE"                                "SEDATIVE"                                        
-#[41] "SEDATIVE_CONCENTRATION..ppm."                     "ANAESTHETIC"                                     
-#[43] "BUFFER"                                           "ANAESTHETIC_CONCENTRATION..ppm."                 
-#[45] "BUFFER_CONCENTRATION_IN_ANAESTHETIC..ppm."        "ANAESTHETIC_CONCENTRATION_IN_RECIRCULATION..ppm."
-#[47] "BUFFER_CONCENTRATION_IN_RECIRCULATION..ppm."      "DISSOLVED_OXYGEN..ppm."                          
-#[49] "COMMENTS"                                        
-tags.df<- tags.df[1:length(tags.df[grep("VEMCO",tags.df$TAG_MANUFACTURER)]),] ## remove the NA's introduced during the import
-tags.df <- tags.df[,-c(33:48)]
-
-
-# set up date and time within the tags.df dataframe
-tags.df$date <- gsub("T", " ", tags.df$UTC_RELEASE_DATE_TIME,) # this allows you to convert date/time md to posix
-tags.df$ddate <-  ymd(substr(tags.df$date, 1, 10))
-tags.df$date <- ymd_hms(tags.df$date, tz = "UTC")
-tags.df$id <- as.factor(tags.df$TAG_ID_CODE) ## need to do this to keep str() same across dfs ## EDIT: CHANGED TO FACTOR ABOVE.. SEE HOW IT WORKS
-
-#colin's code to filter out other tag id's that are not deployed by me 
-# subset the det det based on my tag id's ## eliminated 2144 detections
-tag.id <- as.list(as.character(na.omit(tags.df$TAG_ID_CODE)))
-mr.df <- mr.df[mr.df$id %in% tag.id,] 
-
-### need to get r to eliminate any row that is not populated (will cause a NA's)
-### length of TAG_MODEL that is populated
 
 
 
 ## need to have a day column in the DET and TAGS
 
-#### Clean up dataframes ####
-mr.df <- arrange(mr.df, date)
-mr.df <- distinct(mr.df) # remove any duplicates 
 
 
-### Clean up stations -- Colin's script ####
-mr.df$station <- ifelse(mr.df$station == "01"| mr.df$station =="001", "1",
-                         ifelse(mr.df$station == "02"| mr.df$station =="002", "2",
-                                ifelse(mr.df$station == "03"| mr.df$station =="003", "3",
-                                       ifelse(mr.df$station == "04"| mr.df$station =="004", "4",
-                                              ifelse(mr.df$station == "05"| mr.df$station =="005", "5",
-                                                     ifelse(mr.df$station == "06"| mr.df$station =="006", "6",
-                                                            ifelse(mr.df$station == "07"| mr.df$station =="007", "7",
-                                                                   ifelse(mr.df$station == "08"| mr.df$station =="008", "8",
-                                                                          ifelse(mr.df$station == "09"| mr.df$station =="009", "9",
-                                                                                 ifelse(mr.df$station == "10"| mr.df$station =="010", "10",
-                                                                                        ifelse(mr.df$station == "11"| mr.df$station =="011"| mr.df$station =="0011", "11",
-                                                                                               ifelse(mr.df$station == "12"| mr.df$station =="012", "12",
-                                                                                                      ifelse(mr.df$station == "13"| mr.df$station =="013", "13",
-                                                                                                             ifelse(mr.df$station == "14"| mr.df$station =="014", "14",
-                                                                                                                    ifelse(mr.df$station == "15"| mr.df$station =="015", "15",
-                                                                                                                           ifelse(mr.df$station == "16"| mr.df$station =="016", "16",
-                                                                                                                                  ifelse(mr.df$station == "17"| mr.df$station =="017", "17",
-                                                                                                                                         ifelse(mr.df$station == "18"| mr.df$station =="018", "18",
-                                                                                                                                                ifelse(mr.df$station == "19"| mr.df$station =="019", "19",
-                                                                                                                                                       ifelse(mr.df$station == "20"| mr.df$station =="020", "20",
-                                                                                                                                                              ifelse(mr.df$station == "21"| mr.df$station =="021", "21", "ERROR" ))))))))))))))))))))) 
-## When I want to incorporate MR_13.5 in analysis, I can replace Error with mr.df$station
-                                                                                                                    
+#to read in the csvs with MB VUE data (for each year, 2012-2015)
 
-mr.df <- mr.df[!mr.df$station == "NA",]
-mr.df <- mr.df[!mr.df$station == "ERROR",] ### Tag id 33162  was used for a range test and this escaped above filtering
-mr.df$station <- as.numeric(mr.df$station)
-
-mr.df.backup <- mr.df
+mr.df <- read.csv("data/mrdf.csv", stringsAsFactors = FALSE)
+tag.df <- read.csv("data/tagdf.csv", stringsAsFactors = FALSE)
+stn.df <- read.csv("data/stndf.csv", stringsAsFactors = F)
+zone.df <- read.csv("data/zonedf.csv", stringsAsFactors = F)
 
 
-#### deployment & recovery metadata ####
-# station names have been updated
 
-stn.df <- read.csv("~/Desktop/Data/R/Data Files/bsb_condensed_metadata_2012-2015_UpdatedStations.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
-#1] "STATION_NO"                               "DEPLOY_DATE_TIME....yyyy.mm.ddThh.mm.ss." "INS_SERIAL_NO"                            "X"                                        "STATION_NO.1"                            
-#[6] "INS_SERIAL_NO.1"                          "RECOVERED..y.n.l.f."                      "RECOVER_DATE_TIME..yyyy.mm.ddThh.mm.ss." 
- 
-stn.df <-stn.df[,-c(4:7)]
-names(stn.df)<- c("station", "depl_date", "sn", "recov_date")
-stn.df$station <- as.numeric(stn.df$station)
-stn.df$depl_date <- gsub("T", " ", stn.df$depl_date,) ; stn.df$recov_date <- gsub("T", " ", stn.df$recov_date,) ### changing the date format - 3 & 10 refer to deploymenet and recovery date columns, respectively
-stn.df$depl_date <- ymd_hms(stn.df$depl_date, tz = "UTC")
-stn.df$recov_date <- ymd_hms(stn.df$recov_date, tz = "UTC")
- 
-#### add RIVER ZONE ####
-# NEW 2016-06-13 this is based on natural divisions within the estuary (according to me)
+source("functions/dates_and_times_fun.R")
+mr.df  <- dates_and_times_fun(mr.df)
+tag.df <- dates_and_times_fun(tag.df)
+stn.df <- dates_and_times_fun(stn.df)
+zone.df <- dates_and_times_fun(zone.df)
 
-mr.df$zone <- ifelse(mr.df$station <= 4, 1,
-                     ifelse(mr.df$station >= 5 & mr.df$station <= 8, 2,
-                            ifelse(mr.df$station >= 9 & mr.df$station <= 15, 3,
-                                   ifelse(mr.df$station >= 16, 4, "ERROR")))) 
+# format data and metadata - parse dates, set factors, create intervals 
 
-stn.df$zone <- ifelse(stn.df$station <= 4, 1,
-                      ifelse(stn.df$station >= 5 & stn.df$station <= 8, 2,
-                             ifelse(stn.df$station >= 9 & stn.df$station <= 15, 3,
-                                    ifelse(stn.df$station >= 16, 4, "ERROR")))) 
-
-#etwd("~/Desktop/Data/R/Data Files")
-#write.csv(mr.df, file = "MiraRiver_StripedBass_AllDetects_Cleaned_2015-06-25.csv", row.names = FALSE)
-
-#### zone df ####
-zone.df <- read.csv("~/Desktop/Data/R/Data Files/bsb_mr_zones.csv")
-zone.df$depl_date <- ymd_hms(zone.df$depl_date)
-zone.df$recov_date <- ymd_hms(zone.df$recov_date)
+stn.df <- stn.df[!stn.df$station %in% c(350, 200, 100, 13.5),]
 
 
-#### period of activity - tag,station, & zone ####
-
-#### tag - identifying tag deployment, and last day of activity of tag, then create an interval of tag activity 
-
-tag.depl <- tags.df[,c("id", "date")]
-names(tag.depl) <- c("id","depl_date")
-
-tag.end <- mr.df %>%
-  group_by(id) %>%
-  select(id, date) %>%
-  summarise(
-    end_date = max(date)
-    )
-tag.df <- merge(tag.depl, tag.end, by = "id")
-remove(tag.depl, tag.end)
-
-tag.df$tag_int <- new_interval(tag.df$depl_date, tag.df$end_date)
-tag.df$days_active <- tag.df$end_date - tag.df$depl_date
-
-#### station  - use the station metadata to create an interval of deployment and recovery 
-stn.df$station_int <- new_interval(stn.df$depl_date, stn.df$recov_date)
-stn.df$days_active <- stn.df$recov_date - stn.df$depl_date
-
-backup.stn.df <- stn.df
-
-#### ZONE
-
-zone.df$zone_int <- new_interval(zone.df$depl_date, zone.df$recov_date)
-
-
-#### remove tag data associated with tags prior to their official deployment ####
-remove.tags.df <- NULL
-for(i in tag.df$id){
-  temp <- mr.df[mr.df$id == i & mr.df$date < tag.df$depl_date[tag.df$id == i],]  
-  len <- length(temp$date)
-  temp$tagdate <- rep(tag.df$depl_date[tag.df$id == i], times = len)
-  remove.tags.df <- rbind(remove.tags.df, temp)
-}
-
-mr.df <- anti_join(mr.df, remove.tags.df, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remember
-remove(temp,remove.tags.df,backup.stn.df)
-#### write everything to csv ####
-#write.csv(mr.df, file = "MiraRiver_StripedBass_AllDetects_Cleaned_2015-06-25.csv", row.names = FALSE, sep = ",")
-#write.csv(stn.df, file = "MiraRiver_StripedBass_StationMetadata_2015-06-25.csv", row.names = FALSE)
-#write.csv(tag.df, file = "MiraRiver_StripedBass_TagMetadata_2015-06-25.csv", row.names = FALSE)
 
 ####Create summary of Detections, per day, per station, per fish####
 # use dplyr

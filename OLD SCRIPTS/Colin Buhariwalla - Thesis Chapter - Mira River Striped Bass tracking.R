@@ -7,194 +7,21 @@ require(dplyr)
 require(lubridate)
 require(ggplot2)
 
-####Reading/cleaning data ####
-df <- read.csv("~/Desktop/Data/R/Data Files/MIRA_RIVER_ALL_YEARS_TIME&STATION_CORRECTED.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
-df <- df[-c(4,5,9,10)]
+# things to keep? 
+tagdf <- tagdf[!tagdf$CAPTURE_LOCATION == "FULLER'S BRIDGE",]
 
 
-names(df) <-c("date","vr2","tag", "depth", "unit", "station")
-df$id <- as.factor(unlist(strsplit(df$tag, split = "-"))[3*(1:length(df$tag))]) 
-df$receiver <- as.character(unlist(strsplit(df$vr2, split = "-"))[2*(1:length(df$vr2))])
-
-df$ddate <- ymd(substr(df$date, 1, 10))
-df$date <- ymd_hms(df$date, tz = "UTC")
-df$day <- day(df$date)
-df$month <- month(df$date)
-df$year <- year(df$date)
-
-df$depth <- 0.43970*df$depth-1.7587 #need to set to 1 decimal place? 
-df$unit <- "m"
 
 
-##############tagging metadata
-# make sure that the tag md df is not screwed up by excel formatting going to the csv (creating blank spaces causing 'NA's)
-tags.df <- read.csv("~/Desktop/Data/R/Data Files/BSB_tagging.csv", stringsAsFactors = FALSE, skip = 4, header = TRUE, sep = ",", dec = "." )
-tags.df<- tags.df[1:length(tags.df[grep("VEMCO",tags.df$TAG_MANUFACTURER)]),] ## remove the NA's introduced during the import
-
-# set up date and time within the tags.df dataframe
-tags.df$date <- gsub("T", " ", tags.df$UTC_RELEASE_DATE_TIME,) # this allows you to convert date/time md to posix
-tags.df$ddate <-  ymd(substr(tags.df$date, 1, 10))
-tags.df$date <- ymd_hms(tags.df$date, tz = "UTC")
-#tags.df <- tags.df[,-c(33:65)]
-tags.df$id <- as.factor(tags.df$TAG_ID_CODE) ## need to do this to keep str() same across dfs ## EDIT: CHANGED TO FACTOR ABOVE.. SEE HOW IT WORKS
-tags.df <- tags.df[!tags.df$CAPTURE_LOCATION == "FULLER'S BRIDGE",]
-
-#colin's code to filter out other tag id's that are not deployed by me 
-# subset the det det based on my tag id's ## eliminated 2144 detections
-tag.id <- as.list(as.character(na.omit(tags.df$TAG_ID_CODE)))
-df <- df[df$id %in% tag.id,] 
-
-
-#Clean up dataframes#
-df <- arrange(df, date)
-df <- distinct(df) # remove any duplicates 
-unique(df$station)
-#[1] "005"              "03"               "009"              "015"              "006"              "007"              "12"               "04"               "08"               "07"              
-#[11] "02"               "01"               "06"               "14"               "09"               "11"               "16"               "13"               "13.5"             "20"              
-#[21] "21"               "05"               "Range Test 100 m" "Range Test 200m"  "Range Test 300m"  "013"              "15"               "001"              "17"               "18"              
-#[31] "19"               "10"               "0011"             "014"              "011"             
-
-### Clean up stations -- Colin's script ###
-df$station <- ifelse(df$station == "01"| df$station =="001", "1",
-                     ifelse(df$station == "02"| df$station =="002", "2",
-                            ifelse(df$station == "03"| df$station =="003", "3",
-                                   ifelse(df$station == "04"| df$station =="004", "4",
-                                          ifelse(df$station == "05"| df$station =="005", "5",
-                                                 ifelse(df$station == "06"| df$station =="006", "6",
-                                                        ifelse(df$station == "07"| df$station =="007", "7",
-                                                               ifelse(df$station == "08"| df$station =="008", "8",
-                                                                      ifelse(df$station == "09"| df$station =="009", "9",
-                                                                             ifelse(df$station == "10"| df$station =="010", "10",
-                                                                                    ifelse(df$station == "11"| df$station =="011"| df$station =="0011", "11",
-                                                                                           ifelse(df$station == "12"| df$station =="012", "12",
-                                                                                                  ifelse(df$station == "13"| df$station =="013", "13",
-                                                                                                         ifelse(df$station == "14"| df$station =="014", "14",
-                                                                                                                ifelse(df$station == "15"| df$station =="015", "15",
-                                                                                                                       ifelse(df$station == "16"| df$station =="016", "16",
-                                                                                                                              ifelse(df$station == "17"| df$station =="017", "17",
-                                                                                                                                     ifelse(df$station == "18"| df$station =="018", "18",
-                                                                                                                                            ifelse(df$station == "19"| df$station =="019", "19",
-                                                                                                                                                   ifelse(df$station == "20"| df$station =="020", "20",
-                                                                                                                                                          ifelse(df$station == "21"| df$station =="021", "21", "ERROR" ))))))))))))))))))))) 
-## When I want to incorporate MR_13.5 in analysis, I can replace Error with df$station # acoustic data 
-
-##### FILTERING ####  
-df <- df[!df$station == "NA",]
-df <- df[!df$station == "ERROR",] ### Tag id 33162  was used for a range test and this escaped above filtering
-df$station <- as.numeric(df$station)
-
-df.backup <- df
-
-ow.stations <- c(10,11,12,13) #overwintering array
-outside.array <- c(1:9,14:21) ## what about the change in station names? 
-
-remove.tags.df <- NULL
-for(i in tags.df$id){
-  temp <- df[df$id == i & df$date < tags.df$depl_date[tags.df$id == i],]  
-  len <- length(temp$date)
-  temp$tagdate <- rep(tags.df$depl_date[tags.df$id == i], times = len)
-  remove.tags.df <- rbind(remove.tags.df, temp)
-}
-
-df <- anti_join(df, remove.tags.df, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remember "In Hadley We Trust"
-
-df <- arrange(df, date, id)
 
 ##### Seasonal Movements ####
 
 ######### MOVEMENT DATA ***************************************************************************************************
 
-##manually figure out when fish leave, make a table - in and out scandal####
-in.out <- NULL
-in.out$id[1] <- 48409
-in.out$leave[1] <- "2013-09-04 01:54:47"
-in.out$entry[1] <- "2013-10-09 05:33:48"
-
-in.out$id[2] <- 48410
-in.out$leave[2] <- "2012-09-06 08:47:45"
-in.out$entry[2] <- "2012-10-24 04:29:54"
-
-in.out$id[3] <- 48410
-in.out$leave[3] <- "2013-08-02 02:19:07"
-in.out$entry[3] <- "2013-10-07 07:35:31"
-
-in.out$id[4] <- 48410
-in.out$leave[4] <- "2014-07-27 04:42:36"
-in.out$entry[4] <- "2014-09-09 06:38:27"
-
-in.out$id[5] <- 48411
-in.out$leave[5] <- "2013-08-29 23:59:23" # detected at station 5
-in.out$entry[5] <- "2013-10-07 07:15:13" # returned to station 2 then # 7
-
-in.out$id[6] <- 33158
-in.out$leave[6] <- "2013-08-18 02:16:48" # 2
-in.out$entry[6] <- "2013-10-03 05:17:30" # 2
-
-in.out$id[7] <- 33158
-in.out$leave[7] <- "2014-07-27 04:01:38" #1
-in.out$entry[7] <- "2014-08-30 04:03:51" #1
-
-in.out$id[8] <- 5729
-in.out$leave[8] <- "2013-08-26 23:54:01" #2
-in.out$entry[8] <- "2013-10-07 07:30:27" #2
-
-in.out$id[9] <- 5736 ## caught and released on 2013-08-29T04:38:00
-in.out$leave[9] <- "2013-09-27 23:29:33" #2 ### delayed exit could be due to tagging effect
-in.out$entry[9] <- "2013-10-14 01:46:18" #2
-
-in.out$leave <- ymd_hms(in.out$leave)
-in.out$entry <- ymd_hms(in.out$entry)
-in.out$duration <- round(as.period(new_interval(in.out$leave, in.out$entry), "seconds")/(3600*24), digits = 2)
-in.out$year <- year(in.out$leave)
-in.out <- data.frame(in.out)
-
-in.out.summary<- ddply(in.out, .(year), summarise, 
-                       n = length(unique(id)),
-                       mean_date_leave = mean(leave),
-                       mean_date_return = mean(entry),
-                       mean_duration = mean(duration),
-                       sd = sd(duration))
-
-in.out.summary$sd_leave[1] <- sd(in.out$leave[in.out$year == 2012])/(3600*24)
-in.out.summary$sd_leave[2] <- sd(in.out$leave[in.out$year == 2013])/(3600*24)
-in.out.summary$sd_leave[3] <- sd(in.out$leave[in.out$year == 2014])/(3600*24)
-
-in.out.summary$sd_entry[1] <- sd(in.out$entry[in.out$year == 2012])/(3600*24)
-in.out.summary$sd_entry[2] <- sd(in.out$entry[in.out$year == 2013])/(3600*24)
-in.out.summary$sd_entry[3] <- sd(in.out$entry[in.out$year == 2014])/(3600*24)
-
-#year n     mean_date_leave    mean_date_return mean_duration        sd    sd_leave    sd_entry
-#1 2012 1 2012-09-06 08:47:45 2012-10-24 04:29:54        47.820        NA          NA          NA
-#2 2013 6 2013-08-28 12:58:56 2013-10-08 01:49:47        40.535 16.267704 18.87939290 18.87939290
-#3 2014 2 2014-07-27 04:22:07 2014-09-04 05:21:09        39.040  7.127636  0.02011653  0.02011653
-
-
-## circular plot of fish leave time #### 
-
-in.out$leave.utc <- hour(in.out$leave)
-in.out$enter.utc <- hour(in.out$entry)
-in.out$leave.adt <- c(22, 5, 23, 1, 20, 23, 1, 20, 20)
-in.out$enter.adt <- c(2, 1, 4, 3, 4, 2, 1, 4, 22)
-
-### is it dark at time of entry/exit -- day, dark, nautical twilight (http://www.nrc-cnrc.gc.ca/eng/services/sunrise/) used New Glasgow 
-in.out$leave.sun <- c("dark", "light", "dark", "dark", "dark", "dark","dark", "dark","dark")
-in.out$enter.sun <- c("dark", "dark", "dark","dark","dark","dark","dark","dark","dark")
-
-p1 <- ggplot(in.out, aes(x = leave.adt, fill = leave.sun)) + geom_histogram(breaks = seq(0,24), width = 1) + coord_polar(start = 0, direction = 1) + scale_x_continuous(breaks = seq(0,24), labels = seq(0,24)) + xlab("Hour of Day (AST)") + ggtitle("Departure Time") + theme(axis.text = element_text(size = 30), axis.title = element_text(size =30), plot.title = element_text(size = 30)) +
-  scale_fill_manual(values = c("black", " dark grey")) + theme_bw()
-p1 
-
-p2 <- ggplot(in.out, aes(x = enter.adt, fill = enter.sun))+  geom_histogram(breaks = seq(0,24), width = 1) + coord_polar(start = 0, direction = 1) + scale_x_continuous(breaks = seq(0,24), labels = seq(0,24)) + xlab("Hour of Day (AST)") + ggtitle("Return Time") + theme(axis.text = element_text(size = 30), axis.title = element_text(size =30), plot.title = element_text(size = 30)) +
-  scale_fill_manual(values = c("black", "dark grey")) + theme_bw()
-p2
-
-ggsave(p1, file = "DeparturePlot.png", height = 13, width = 13)
-ggsave(p2, file = "ReturnPlot.png", height = 13, width = 13)
 
 
 
-
-####How to automate above using a csv of sunrise, sunset, twilight
+####How to automate above (see ICFT script for circular plots) using a csv of sunrise, sunset, twilight
 # code below to add colour to hourly breaching plot for night/day/twilight
 # to read in sunset, sunrise and twilight times data
 
@@ -424,7 +251,7 @@ stn.df$recov_date <- ymd_hms(stn.df$recov_date, tz = "UTC")
 ## calculate the period of activity for tag and station ####
 
 # tag - identifying tag deployment, and last day of activity of tag, then create an interval of tag activity 
-tag.depl <- tags.df[,c("id", "date")]
+tag.depl <- tagdf[,c("id", "date")]
 names(tag.depl) <- c("id","depl_date")
 
 tag.end <- mr.df %>%
@@ -444,15 +271,15 @@ stn.df$days_active <- stn.df$recov_date - stn.df$depl_date
 
 backup.stn.df <- stn.df
 ## remove tag data associated with tags prior to their official deployment ####
-remove.tags.df <- NULL
+remove.tagdf <- NULL
 for(i in tag.df$id){
   temp <- mr.df[mr.df$id == i & mr.df$date < tag.df$depl_date[tag.df$id == i],]  
   len <- length(temp$date)
   temp$tagdate <- rep(tag.df$depl_date[tag.df$id == i], times = len)
-  remove.tags.df <- rbind(remove.tags.df, temp)
+  remove.tagdf <- rbind(remove.tagdf, temp)
 }
 
-mr.df <- anti_join(mr.df, remove.tags.df, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remembe
+mr.df <- anti_join(mr.df, remove.tagdf, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remembe
 ## write everything to csv ####
 #write.csv(mr.df, file = "MiraRiver_StripedBass_AllDetects_Cleaned_2015-06-25.csv", row.names = FALSE, sep = ",")
 #write.csv(stn.df, file = "MiraRiver_StripedBass_StationMetadata_2015-06-25.csv", row.names = FALSE)
@@ -623,8 +450,8 @@ ggplot(depth.df, aes(date, depth)) + geom_point() + facet_wrap(~id)
 
 ######## MORPHOMETRIC STUFF***************************
 #### tagging metadata ####
-tags.df$tag_life <- as.numeric(gsub(" days", "", tags.df$EST_TAG_LIFE))
-tagging.summary <- tags.df %>%
+tagdf$tag_life <- as.numeric(gsub(" days", "", tagdf$EST_TAG_LIFE))
+tagging.summary <- tagdf %>%
   group_by(year(date), TAG_MODEL) %>%
   summarise(
     n = length(unique(id)),

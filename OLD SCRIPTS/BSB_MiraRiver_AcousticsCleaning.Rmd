@@ -58,25 +58,26 @@ mrdf$station <- ifelse(mrdf$station == "01"| mrdf$station =="001", "1",
                                                             ifelse(mrdf$station == "07"| mrdf$station =="007", "7",
                                                                    ifelse(mrdf$station == "08"| mrdf$station =="008", "8",
                                                                           ifelse(mrdf$station == "09"| mrdf$station =="009", "9",
-                                                                                 ifelse(mrdf$station == "10"| mrdf$station =="010", "10",
-                                                                                        ifelse(mrdf$station == "11"| mrdf$station =="011"| mrdf$station =="0011", "11",
-                                                                                               ifelse(mrdf$station == "12"| mrdf$station =="012", "12",
-                                                                                                      ifelse(mrdf$station == "13"| mrdf$station =="013", "13",
-                                                                                                             ifelse(mrdf$station == "14"| mrdf$station =="014", "14",
-                                                                                                                    ifelse(mrdf$station == "15"| mrdf$station =="015", "15",
-                                                                                                                           ifelse(mrdf$station == "16"| mrdf$station =="016", "16",
-                                                                                                                                  ifelse(mrdf$station == "17"| mrdf$station =="017", "17",
-                                                                                                                                         ifelse(mrdf$station == "18"| mrdf$station =="018", "18",
-                                                                                                                                                ifelse(mrdf$station == "19"| mrdf$station =="019", "19",
-                                                                                                                                                       ifelse(mrdf$station == "20"| mrdf$station =="020", "20",
-                                                                                                                                                              ifelse(mrdf$station == "21"| mrdf$station =="021", "21", "ERROR" ))))))))))))))))))))) 
+                                                                                 
+                    ifelse(mrdf$station == "10"| mrdf$station =="010", "10",
+                    ifelse(mrdf$station == "11"| mrdf$station =="011"| mrdf$station =="0011", "11",
+                    ifelse(mrdf$station == "12"| mrdf$station =="012", "12",
+                    ifelse(mrdf$station == "13"| mrdf$station =="013", "13",
+                    ifelse(mrdf$station == "14"| mrdf$station =="014", "14",
+                    ifelse(mrdf$station == "15"| mrdf$station =="015", "15",
+                    ifelse(mrdf$station == "16"| mrdf$station =="016", "16",
+                    ifelse(mrdf$station == "17"| mrdf$station =="017", "17",
+                    ifelse(mrdf$station == "18"| mrdf$station =="018", "18",
+                    ifelse(mrdf$station == "19"| mrdf$station =="019", "19",
+                    ifelse(mrdf$station == "20"| mrdf$station =="020", "20",
+                    ifelse(mrdf$station == "21"| mrdf$station =="021", "21", "ERROR" ))))))))))))))))))))) 
 ## When I want to incorporate MR_13.5 in analysis, I can replace Error with mrdf$station
                                                                                                                     
 
 mrdf <- mrdf[!mrdf$station == "NA",]
 mrdf <- mrdf[!mrdf$station == "ERROR",] ### Tag id 33162  was used for a range test and this escaped above filtering
 #mrdf$station <- as.numeric(mrdf$station) # this is not proper data etiquete 
-
+mrdf <- arrange(mrdf, date, id)
 ```
 
 Cleaning up Stations 
@@ -145,8 +146,16 @@ for(i in tagdf$id){
   remove.tagdf <- rbind(remove.tagdf, temp)
 }
 
+print(remove.tags.df %>% group_by(id) %>% summarise(n_distinct(date)))
+#  id n_distinct(date)
+#1  5736               21
+#2  5743                8
+#3 33159               22
+#4 33160                1
+#5 33162             1282
+
 mrdf <- anti_join(mrdf, remove.tagdf, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remember
-mrdf <- arrange(mrdf, date)
+mrdf <- arrange(mrdf, date, id)
 ```
 
 clean up the environment
