@@ -7,16 +7,6 @@ output: html_document
 
 # this script is to be used for each analysis invloving Mira River Data. It has been scrubbed & its purpose is to stop the repetition from older scripts.
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-# sensor conversion == y= mx + b == .43970x -1.7587
-#df$depth <- 0.43970*df$depth-1.7587 #need to set to 1 decimal place? 
-#df$unit <- "m"
-
-
-
 ```{r}
 require(lubridate)
 require(plyr)
@@ -31,51 +21,35 @@ tags.df <- read.csv("Raw Data/BSB_MR_tagging.csv", stringsAsFactors = FALSE, ski
 stn.df <- read.csv("Raw Data/bsb_condensed_metadata_2012-2015_UpdatedStations.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
 ```
 
-use cleaning function 
+use cleaning function. detailed cleaning instructions in function  
 ```{r}
 source("functions/acoustic_cleaning_fun.R")
-trash2 <- acoustic_cleaning_fun(mr.df)
+mr.df <- acoustic_cleaning_fun(mr.df)
 ```
 
+format the tag sheets into something useful 
 ```{r}
-mr.df <- mr.df[-c(4,5,9,10)] ## this will change if it's used for Pictou Harbour keep 6 & 7 as "sensor" & "unit", respectively
-names(mr.df) <-c("date","receiver","tag","sensor","unit","station") ### sensor/unit will need to be kept for Pictou Harbour fishes
-mr.df$id <- as.factor(unlist(strsplit(mr.df$tag, split = "-"))[3*(1:length(mr.df$tag))]) 
-mr.df$receiver <- as.character(unlist(strsplit(mr.df$receiver, split = "-"))[2*(1:length(mr.df$receiver))])
+source("functions/tag_cleaning_fun.R")
+tags.df <- tag_cleaning_fun(tags.df)
+```
 
-mr.df$ddate <- ymd(substr(mr.df$date, 1, 10))
-mr.df$date <- ymd_hms(mr.df$date, tz = "UTC")
-mr.df$day <- day(mr.df$date)
-mr.df$month <- month(mr.df$date)
-mr.df$year <- year(mr.df$date)
+filter out tags that don't belong to me, arrange data frame by date, and make sure there are no duplicates
+```{r}
+mr.df <- mr.df[mr.df$id %in% tags.df$id,] # filters out 8060 detections 
+mr.df <- arrange(mr.df, date) # need dplyr
+mr.df <- distinct(mr.df) # same same 
+```
 
-tags.df<- tags.df[1:length(tags.df[grep("VEMCO",tags.df$TAG_MANUFACTURER)]),] ## remove the NA's introduced during the import
-tags.df <- tags.df[,-c(33:48)]
+now that there is a lull in the action, it may be a good time to enter calibrated sensor values
+```{r}
+#sensor conversion formula  y = mx + b == .43970x -1.7587
+mr.df$sensor <- ifelse(mr.df$unit == "ADC", mr.df$sensor <- 0.43970*mr.df$sensor-1.7587, mr.df$sensor <- mr.df$sensor) 
+mr.df$unit <- ifelse(mr.df$unit == "ADC", "meters", mr.df$unit)
+```
 
-# set up date and time within the tags.df dataframe
-tags.df$date <- gsub("T", " ", tags.df$UTC_RELEASE_DATE_TIME,) # this allows you to convert date/time md to posix
-tags.df$ddate <-  ymd(substr(tags.df$date, 1, 10))
-tags.df$date <- ymd_hms(tags.df$date, tz = "UTC")
-tags.df$id <- as.factor(tags.df$TAG_ID_CODE) ## need to do this to keep str() same across dfs ## EDIT: CHANGED TO FACTOR ABOVE.. SEE HOW IT WORKS
-
-#colin's code to filter out other tag id's that are not deployed by me 
-# subset the det det based on my tag id's ## eliminated 2144 detections
-tag.id <- as.list(as.character(na.omit(tags.df$TAG_ID_CODE)))
-mr.df <- mr.df[mr.df$id %in% tag.id,] 
-
-### need to get r to eliminate any row that is not populated (will cause a NA's)
-### length of TAG_MODEL that is populated
-
-
-
-## need to have a day column in the DET and TAGS
-
-#### Clean up dataframes ####
-mr.df <- arrange(mr.df, date)
-mr.df <- distinct(mr.df) # remove any duplicates 
-
-
-### Clean up stations -- Colin's script ####
+ugly ass station cleaning # NOTE: these station names are from the most recent VUE export where names were corrected to new station name list. These station names will differ from those in OTN matched detection files 
+```{r}
+# clean up all station names 
 mr.df$station <- ifelse(mr.df$station == "01"| mr.df$station =="001", "1",
                          ifelse(mr.df$station == "02"| mr.df$station =="002", "2",
                                 ifelse(mr.df$station == "03"| mr.df$station =="003", "3",
@@ -102,27 +76,20 @@ mr.df$station <- ifelse(mr.df$station == "01"| mr.df$station =="001", "1",
 
 mr.df <- mr.df[!mr.df$station == "NA",]
 mr.df <- mr.df[!mr.df$station == "ERROR",] ### Tag id 33162  was used for a range test and this escaped above filtering
-mr.df$station <- as.numeric(mr.df$station)
+#mr.df$station <- as.numeric(mr.df$station) # this is not proper data etiquete 
 
 ```
 
-Cleaning up Stations
-
+Cleaning up Stations 
 ```{r}
-stn.df <-stn.df[,-c(4:7)]
-names(stn.df)<- c("station", "depl_date", "sn", "recov_date")
-stn.df$station <- as.numeric(stn.df$station)
-stn.df$depl_date <- gsub("T", " ", stn.df$depl_date,) ; stn.df$recov_date <- gsub("T", " ", stn.df$recov_date,) ### changing the date format - 3 & 10 refer to deploymenet and recovery date columns, respectively
-stn.df$depl_date <- ymd_hms(stn.df$depl_date, tz = "UTC")
-stn.df$recov_date <- ymd_hms(stn.df$recov_date, tz = "UTC")
+source("functions/station_cleaning_fun.R")
+stn.df <- station_cleaning_fun(stn.df)
+```
 
-#need to remove stns 13.5,100.0,200.0 350.0
-
-stn.df <- stn.df[!stn.df$station %in% c(13.5, 100.0,200.0,350.0),]
-
-#### add RIVER ZONE ####
-# NEW 2016-06-13 this is based on natural divisions within the estuary (according to me)
-
+Add River Zone* 
+```{r}
+# add RIVER ZONE - *** this will change with the further analysis of the system wide water sampling files
+# NEW 2016-06-13 this is based on natural divisions within the estuary (according to me see above note)
 mr.df$zone <- ifelse(mr.df$station <= 4, 1,
                      ifelse(mr.df$station >= 5 & mr.df$station <= 8, 2,
                             ifelse(mr.df$station >= 9 & mr.df$station <= 15, 3,
@@ -133,11 +100,10 @@ stn.df$zone <- ifelse(stn.df$station <= 4, 1,
                              ifelse(stn.df$station >= 9 & stn.df$station <= 15, 3,
                                     ifelse(stn.df$station >= 16, 4, "ERROR")))) 
 
-#etwd("~/Desktop/Data/R/Data Files")
-#write.csv(mr.df, file = "MiraRiver_StripedBass_AllDetects_Cleaned_2015-06-25.csv", row.names = FALSE)
+
 
 #### zone df ####
-zone.df <- read.csv("~/Desktop/Data/R/Data Files/bsb_mr_zones.csv")
+zone.df <- read.csv("Raw Data/bsb_mr_zones.csv")
 zone.df$depl_date <- ymd_hms(zone.df$depl_date)
 zone.df$recov_date <- ymd_hms(zone.df$recov_date)
 ```
@@ -193,4 +159,4 @@ remove(temp,remove.tags.df,backup.stn.df,tag.depl, tag.end)
 
 FROM HERE GO TO GANT CHART. RESIDENCY INDEX, etc. 
 
-
+#write.csv(mr.df, file = "MiraRiver_StripedBass_AllDetects_Cleaned_2015-06-25.csv", row.names = FALSE)
