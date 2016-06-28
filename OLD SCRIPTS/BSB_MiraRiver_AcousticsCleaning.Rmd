@@ -99,22 +99,20 @@ stn.df$zone <- ifelse(stn.df$station <= 4, 1,
                       ifelse(stn.df$station >= 5 & stn.df$station <= 8, 2,
                              ifelse(stn.df$station >= 9 & stn.df$station <= 15, 3,
                                     ifelse(stn.df$station >= 16, 4, "ERROR")))) 
+```
 
-
-
-#### zone df ####
+zone df for possible deployment shit.. 
+```{r}
 zone.df <- read.csv("Raw Data/bsb_mr_zones.csv")
 zone.df$depl_date <- ymd_hms(zone.df$depl_date)
 zone.df$recov_date <- ymd_hms(zone.df$recov_date)
 ```
 
 ```{r}
-#### period of activity - tag,station, & zone ####
+# period of activity - tag,station, & zone #
+# tag - identifying tag deployment, and last day of activity of tag, then create an interval of tag activity 
 
-#### tag - identifying tag deployment, and last day of activity of tag, then create an interval of tag activity 
-
-tag.depl <- tags.df[,c("id", "date")]
-names(tag.depl) <- c("id","depl_date")
+tags.df$depl_date <- tags.df$date
 
 tag.end <- mr.df %>%
   group_by(id) %>%
@@ -122,17 +120,37 @@ tag.end <- mr.df %>%
   summarise(
     end_date = max(date)
     )
-tag.df <- merge(tag.depl, tag.end, by = "id")
+tags.df <- merge(tags.df, tag.end, by = "id")
 
 ### since the receivers were pulled on 2015-05-25, tag ids: 33160 33161 33158 33162 33159 were supposed to have tags active for longer period of time and will have a tag end date of 2015-05-26 so as to be included in all possible deployment time
 long.tags <- c("33160", "33161", "33158", "33162", "33159")
 
- for(i in 1:length(tag.df$id)){
-  if(tag.df$id[i] %in% long.tags){tag.df$end_date[i] <- ymd_hms("2015-05-26 00:00:01")}}
+ for(i in 1:length(tags.df$id)){
+  if(tags.df$id[i] %in% long.tags){tags.df$end_date[i] <- ymd_hms("2015-05-26 00:00:01")}}
 
-tag.df$tag_int <- new_interval(tag.df$depl_date, tag.df$end_date)
-tag.df$days_active <- tag.df$end_date - tag.df$depl_date
+tags.df$tag_int <- new_interval(tags.df$depl_date, tags.df$end_date)
+tags.df$days_active <- tags.df$end_date - tags.df$depl_date
 
+```
+
+
+```{r}
+#### remove tag data associated with tags prior to their official deployment ####
+remove.tags.df <- NULL
+for(i in tag.df$id){
+  temp <- mr.df[mr.df$id == i & mr.df$date < tags.df$depl_date[tags.df$id == i],]  
+  len <- length(temp$date)
+  temp$tagdate <- rep(tags.df$depl_date[tags.df$id == i], times = len)
+  remove.tags.df <- rbind(remove.tags.df, temp)
+}
+
+mr.df <- anti_join(mr.df, remove.tags.df, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remember
+remove(temp,remove.tags.df,backup.stn.df,tag.depl, tag.end)
+```
+
+
+
+```{r}
 #### station  - use the station metadata to create an interval of deployment and recovery 
 stn.df$station_int <- new_interval(stn.df$depl_date, stn.df$recov_date)
 stn.df$days_active <- stn.df$recov_date - stn.df$depl_date
