@@ -11,6 +11,11 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
+# sensor conversion == y= mx + b == .43970x -1.7587
+#df$depth <- 0.43970*df$depth-1.7587 #need to set to 1 decimal place? 
+#df$unit <- "m"
+
+
 
 ```{r}
 require(lubridate)
@@ -20,16 +25,31 @@ require(ggplot2)
 ```
 
 read in data and metadata
-
 ```{r}
-mr.df <- read.csv("~/Desktop/Data/R/Data Files/MIRA_RIVER_ALL_YEARS_TIME&STATION_CORRECTED.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
-tags.df <- read.csv("~/Desktop/Data/R/Data Files/BSB_tagging.csv", stringsAsFactors = FALSE, skip = 4, header = TRUE, sep = ",", dec = "." )
-stn.df <- read.csv("~/Desktop/Data/R/Data Files/bsb_condensed_metadata_2012-2015_UpdatedStations.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+mr.df <- read.csv("Raw Data/MIRA_RIVER_ALL_YEARS_TIME&STATION_CORRECTED.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+tags.df <- read.csv("Raw Data/BSB_MR_tagging.csv", stringsAsFactors = FALSE, skip = 4, header = TRUE, sep = ",", dec = "." )
+stn.df <- read.csv("Raw Data/bsb_condensed_metadata_2012-2015_UpdatedStations.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+```
+
+create function to take VUE extracts and produce a workable data file 
+```{r}
+acoustic_cleaning.fun <- function(data, output.name.df)
+  {
+  output.name.df <- data[-c(4,5,9,10)]
+  names(output.name.df)  <- c("date","receiver","tag","sensor","unit","station")
+  output.name.df$id <- unlist(strsplit(data$tag, split = "-"))[3*(1:length(data$tag))] # separate the elements of the tag ID vector to isolate strictly IDs 
+  
+  output.name.df$ddate <- ymd(substr(data$date, 1, 10))
+  output.name.df$date <- ymd_hms(data$date, tz = "UTC")
+  output.name.df$day <- day(data$date)
+  output.name.df$month <- month(data$date)
+  output.name.df$year <- year(data$date)
+}
 ```
 
 ```{r}
-mr.df <- mr.df[-c(4,5,6,7,9,10)]
-names(mr.df) <-c("date","receiver","tag", "station")
+mr.df <- mr.df[-c(4,5,9,10)] ## this will change if it's used for Pictou Harbour keep 6 & 7 as "sensor" & "unit", respectively
+names(mr.df) <-c("date","receiver","tag","sensor","unit","station") ### sensor/unit will need to be kept for Pictou Harbour fishes
 mr.df$id <- as.factor(unlist(strsplit(mr.df$tag, split = "-"))[3*(1:length(mr.df$tag))]) 
 mr.df$receiver <- as.character(unlist(strsplit(mr.df$receiver, split = "-"))[2*(1:length(mr.df$receiver))])
 
