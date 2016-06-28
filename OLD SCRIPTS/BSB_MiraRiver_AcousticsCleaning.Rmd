@@ -31,20 +31,10 @@ tags.df <- read.csv("Raw Data/BSB_MR_tagging.csv", stringsAsFactors = FALSE, ski
 stn.df <- read.csv("Raw Data/bsb_condensed_metadata_2012-2015_UpdatedStations.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
 ```
 
-create function to take VUE extracts and produce a workable data file 
+use cleaning function 
 ```{r}
-acoustic_cleaning.fun <- function(data, output.name.df)
-  {
-  output.name.df <- data[-c(4,5,9,10)]
-  names(output.name.df)  <- c("date","receiver","tag","sensor","unit","station")
-  output.name.df$id <- unlist(strsplit(data$tag, split = "-"))[3*(1:length(data$tag))] # separate the elements of the tag ID vector to isolate strictly IDs 
-  
-  output.name.df$ddate <- ymd(substr(data$date, 1, 10))
-  output.name.df$date <- ymd_hms(data$date, tz = "UTC")
-  output.name.df$day <- day(data$date)
-  output.name.df$month <- month(data$date)
-  output.name.df$year <- year(data$date)
-}
+source("functions/acoustic_cleaning_fun.R")
+trash2 <- acoustic_cleaning_fun(mr.df)
 ```
 
 ```{r}
