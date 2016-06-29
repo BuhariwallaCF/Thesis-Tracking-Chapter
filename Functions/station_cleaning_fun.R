@@ -12,7 +12,7 @@ station_cleaning_fun <- function(data){
   data$depl_date <- gsub("T", " ", data$depl_date,) ; data$recov_date <- gsub("T", " ", data$recov_date,) ### changing the date format - 3 & 10 refer to deploymenet and recovery date columns, respectively
   data$depl_date <- ymd_hms(data$depl_date, tz = "UTC")
   data$recov_date <- ymd_hms(data$recov_date, tz = "UTC")
-  
+  data$station <- as.character(data$station)
   #need to remove stns 13.5,100.0,200.0 350.0
   
   data <- data[!data$station %in% c("13.5", "100.0","200.0","350.0"),]

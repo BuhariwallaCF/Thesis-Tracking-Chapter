@@ -86,19 +86,21 @@ source("functions/station_cleaning_fun.R")
 stndf <- station_cleaning_fun(stndf)
 ```
 
-Add River Zone* 
+Add River Zone* This will not work since the stations are in character
 ```{r}
 # add RIVER ZONE - *** this will change with the further analysis of the system wide water sampling files
 # NEW 2016-06-13 this is based on natural divisions within the estuary (according to me see above note)
-mrdf$zone <- ifelse(mrdf$station <= 4, 1,
-                     ifelse(mrdf$station >= 5 & mrdf$station <= 8, 2,
-                            ifelse(mrdf$station >= 9 & mrdf$station <= 15, 3,
-                                   ifelse(mrdf$station >= 16, 4, "ERROR")))) 
+mrdf$num_stationn <- as.numeric(mrdf$station)
+mrdf$zone <- ifelse(mrdf$num_station <= 4, 1,
+                     ifelse(mrdf$num_station >= 5 & mrdf$num_station <= 8, 2,
+                            ifelse(mrdf$num_station >= 9 & mrdf$num_station <= 15, 3,
+                                   ifelse(mrdf$num_station >= 16, 4, "ERROR")))) 
 
-stndf$zone <- ifelse(stndf$station <= 4, 1,
-                      ifelse(stndf$station >= 5 & stndf$station <= 8, 2,
-                             ifelse(stndf$station >= 9 & stndf$station <= 15, 3,
-                                    ifelse(stndf$station >= 16, 4, "ERROR")))) 
+stndf$num_station <- as.numeric(stndf$num_station)
+stndf$zone <- ifelse(stndf$num_station <= 4, 1,
+                      ifelse(stndf$num_station >= 5 & stndf$num_station <= 8, 2,
+                             ifelse(stndf$num_station >= 9 & stndf$num_station <= 15, 3,
+                                    ifelse(stndf$num_station >= 16, 4, "ERROR")))) 
 ```
 
 zone df for possible deployment shit.. 
@@ -146,7 +148,7 @@ for(i in tagdf$id){
   remove.tagdf <- rbind(remove.tagdf, temp)
 }
 
-print(remove.tags.df %>% group_by(id) %>% summarise(n_distinct(date)))
+print(remove.tagdf %>% group_by(id) %>% summarise(n_distinct(date)))
 #  id n_distinct(date)
 #1  5736               21
 #2  5743                8
@@ -160,8 +162,30 @@ mrdf <- arrange(mrdf, date, id)
 
 clean up the environment
 ```{r}
-remove(temp,remove.tagdf,backup.stndf,tag.depl,tag.end, i, len, long.tags, acoustic_cleaning_fun, station_cleaning_fun, tag_cleaning_fun)
+remove(temp,remove.tagdf, i, len, long.tags, acoustic_cleaning_fun, station_cleaning_fun, tag_cleaning_fun)
 ```
+
+make sure tag export from VUE matches the new station names/ receiver SN. 
+```{r}
+to do this:
+for each date, receiver 
+
+stn.check <- NULL
+for(i in 1:length(stndf$sn)){
+  temp <- mrdf[mrdf$receiver == stndf$sn[i] & mrdf$date >= stndf$depl_date[i] & mrdf$date <= stndf$recov_date[i] & mrdf$station != stndf$station[i],]
+ stn.check<- rbind(stn.check, temp)
+}
+
+stn.check2 <- NULL
+system( 
+  for(i in 1:length(stndf$sn)){
+  temp <- mrdf[mrdf$receiver == stndf$sn[i] & mrdf$date %within% stndf$activity_interval[stndf$sn == stndf$sn[i]] == FALSE & mrdf$station != stndf$station[i],]
+stn.check2 <- rbind(stn.check2, temp)
+}
+)
+
+```
+
 
 write out the new data files as csvs so they can be used for all future files
 ```{r}
