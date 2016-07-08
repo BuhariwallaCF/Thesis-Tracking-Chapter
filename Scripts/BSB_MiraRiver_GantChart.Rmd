@@ -7,6 +7,13 @@ output: html_document
 
 require(lubridate)
 require(dplyr)
+require(ggplot2)
+
+require(knitr)
+require(scales)
+require(RColorBrewer)
+require(grid)
+require(gridExtra)
 
 - to read in the csvs with MB VUE data (for each year, 2012-2015)
 
@@ -61,7 +68,7 @@ stn.det <- mr.df %>% group_by(ddate, station) %>% summarise(det_tags = n_distinc
 
 stn.det$act_tags <- NULL ## the totoal number of active tags within the system.. 
 for(i in 1:length(stn.det$ddate)){
-  stn.det$act_tags[i] <- length(which(stn.det$ddate[i] %within% tag.df$tag_int)) 
+  stn.det$act_tags[i] <- length(which(stn.det$ddate[i] %within% tag.df$activity_interval)) 
 }
 
 stn.det <- mutate(stn.det, prop_tags = det_tags/act_tags) # prop_tags = det_tags/act_tags = The proportion of tags (prop_tags) detected at each station (det_tags) relative to the number of active tags (act_tags) in the system
@@ -96,21 +103,24 @@ I need to figure out how to sum the cumulative number of active tags per month.
 ```{r}
 ### so in order to achieve the below, I need to go through each day, of station activity (stn.det) and produce a sheet of all possible dates for each tag id. maybe make this by taking tag.df 
 
-tag.activity.month <- tag.df %>% group_by(id) %>% do(data.frame(date = seq(.$depl_date, .$end_date, by = "1 day")))
+tag.activity.month <- tag.df %>% group_by(id) %>% do(data.frame(date = seq(.$depl_date, .$recov_date, by = "1 day")))
 
 tag.activity.month$month <- month(tag.activity.month$date, label = TRUE, abbr = FALSE)
 
 tag.activity.month <- tag.activity.month %>% group_by(month) %>% summarise(all_tags = n_distinct(id))
 
-p.tag.activity.month <- ggplot(monthly.tag.activity, aes(month, all_tags)) + geom_bar(stat = "identity") +  theme_bw() + xlab("Date") + ylab("Number of Active Tags") +
+p.tag.activity.month <- ggplot(tag.activity.month, aes(month, all_tags)) + geom_bar(stat = "identity") +  theme_bw() + xlab("Date") + ylab("Number of Active Tags") +
      theme(axis.text = element_text(size = rel(1.5)), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))  
 ```
 
 Let's try something from the above code..... 
 ```{r}
-
-
 ## note this will just be the number of MAX active tags per month and no the number of tags per ddate (some tags drop oout mid month)... DISCUSS with MIKE... 
+
+tag.activity.month <- tag.df %>% group_by(id) %>% do(data.frame(date = seq(.$depl_date, .$recov_date, by = "1 day")))
+
+tag.activity.month$month <- month(tag.activity.month$date, label = TRUE, abbr = FALSE)
+
 tag.activity.month$yrmo <- ymd(paste(year(tag.activity.month$date), month(tag.activity.month$date), "01", sep = "-"))
 
 tag.activity.yrmo <- tag.activity.month %>% group_by(yrmo) %>% summarise(act_tags = n_distinct(id))

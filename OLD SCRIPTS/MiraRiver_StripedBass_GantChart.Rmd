@@ -246,7 +246,7 @@ stn.det <- mr.df %>% group_by(ddate, station) %>% summarise(det_tags = n_distinc
 
 stn.det$act_tags <- NULL ## the totoal number of active tags within the system.. 
 for(i in 1:length(stn.det$ddate)){
-  stn.det$act_tags[i] <- length(which(stn.det$ddate[i] %within% tag.df$tag_int)) 
+  stn.det$act_tags[i] <- length(which(stn.det$ddate[i] %within% tag.df$activity_interval)) 
 }
 
 stn.det <- mutate(stn.det, prop_tags = det_tags/act_tags) # prop_tags = det_tags/act_tags = The proportion of tags (prop_tags) detected at each station (det_tags) relative to the number of active tags (act_tags) in the system
