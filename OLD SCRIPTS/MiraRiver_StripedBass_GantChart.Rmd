@@ -16,16 +16,17 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 
 - to install packages
 ```{r}
-require(lubridate)
+
 require(plyr)
 require(ggplot2)
 #require(reshape2)
 require(knitr)
 require(scales)
 require(RColorBrewer)
-require(dplyr)
 require(grid)
 require(gridExtra)
+require(lubridate)
+require(dplyr)
 ```
 
 - to read in the csvs with MB VUE data (for each year, 2012-2015)
@@ -222,6 +223,8 @@ plot.2012.1dpd
 plot.2012
 ```
 
+
+
 plot stations with circles indicating total number of tags active per day
 ```{r}
 
@@ -241,7 +244,7 @@ produce the above plot mapping the number of tags at each station
 ```{r}
 stn.det <- mr.df %>% group_by(ddate, station) %>% summarise(det_tags = n_distinct(id))
 
-stn.det$act_tags <- NULL
+stn.det$act_tags <- NULL ## the totoal number of active tags within the system.. 
 for(i in 1:length(stn.det$ddate)){
   stn.det$act_tags[i] <- length(which(stn.det$ddate[i] %within% tag.df$tag_int)) 
 }

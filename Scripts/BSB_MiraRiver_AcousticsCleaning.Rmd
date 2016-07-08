@@ -154,7 +154,7 @@ print(remove.tagdf %>% group_by(id) %>% summarise(n_distinct(date)))
 #2  5743                8
 #3 33159               22
 #4 33160                1
-#5 33162             1282
+#5 33162             1282/5865 (when mr13.5 stays in)
 
 mrdf <- anti_join(mrdf, remove.tagdf, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remember
 mrdf <- arrange(mrdf, date, id)
@@ -167,23 +167,14 @@ remove(temp,remove.tagdf, i, len, long.tags, acoustic_cleaning_fun, station_clea
 
 make sure tag export from VUE matches the new station names/ receiver SN. 
 ```{r}
-to do this:
-for each date, receiver 
+#to do this:
+#for each date, receiver 
 
 stn.check <- NULL
 for(i in 1:length(stndf$sn)){
   temp <- mrdf[mrdf$receiver == stndf$sn[i] & mrdf$date >= stndf$depl_date[i] & mrdf$date <= stndf$recov_date[i] & mrdf$station != stndf$station[i],]
  stn.check<- rbind(stn.check, temp)
 }
-
-stn.check2 <- NULL
-system( 
-  for(i in 1:length(stndf$sn)){
-  temp <- mrdf[mrdf$receiver == stndf$sn[i] & mrdf$date %within% stndf$activity_interval[stndf$sn == stndf$sn[i]] == FALSE & mrdf$station != stndf$station[i],]
-stn.check2 <- rbind(stn.check2, temp)
-}
-)
-
 ```
 
 
