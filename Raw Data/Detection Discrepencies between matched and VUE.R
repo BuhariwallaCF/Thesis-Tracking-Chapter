@@ -1,75 +1,6 @@
-#2016-06-19 
-# False filtering - C Buhariwalla
-# from output of white mihoff filtering tool 
-
-require(lubridate)
-require(dplyr)
-require(qdap)
-
-df <- read.csv("~/Desktop/Data/R/Data Files/False Filtering/bsb_matched_detections_2012_suspect_v00.csv", stringsAsFactors = FALSE)
-non.suspect.2012 <- df[(df$stn1 == df$stn2 & df$stn2 == df$stn3|df$stn1 == "ALBERT BRIDGE"|df$stn1 == df$stn2|df$stn2==df$stn3),]
-df <- anti_join(df, non.suspect.2012)
-non.suspect.2012 <- bind_rows(non.suspect.2012, df) ## after manually checking the detections, there is nothing that'd I'd consider suspect
-
-df2 <- read.csv("~/Desktop/Data/R/Data Files/False Filtering/bsb_matched_detections_2013_suspect_v00.csv", stringsAsFactors = FALSE)
-non.suspect.2013 <- df2[(df2$stn1 == df2$stn2 & df2$stn2 == df2$stn3|df2$stn1 == "ALBERT BRIDGE"|df2$stn1 == df2$stn2|df2$stn2==df2$stn3),]
-df2 <- anti_join(df2, non.suspect.2013)
-suspect.2013 <- c("HFX-A69-1303-33160-170125","BSB-A69-1303-33158-335779","BSB-A69-1303-48411-538919")
-#non.suspect.2013 <- bind_rows(non.suspect.2013, df2[!df2$suspect_detection %in% suspect.2013,]) 
-false.13 <- df2[df2$suspect_detection %in% suspect.2013,]
-false.13$prev_interval <- hms(false.13$prev_interval)
-false.13$next_interval <- hms(false.13$next_interval)
-
-df3 <- read.csv("~/Desktop/Data/R/Data Files/False Filtering/bsb_matched_detections_2014_suspect_v00.csv", stringsAsFactors = FALSE)
-non.suspect.2014 <- df3[(df3$stn1 == df3$stn2 & df3$stn2 == df3$stn3|df3$stn1 == "ALBERT BRIDGE"|df3$stn1 == df3$stn2|df3$stn2==df3$stn3),]
-df3 <- anti_join(df3, non.suspect.2014) 
-suspect.2014 <- NULL
-non.suspect.2014 <- bind_rows(non.suspect.2014, df3)
-
-
-df4 <- read.csv("~/Desktop/Data/R/Data Files/False Filtering/bsb_matched_detections_2015_suspect_v00.csv", stringsAsFactors = FALSE)
-non.suspect.2015 <- df4[(df4$stn1 == df4$stn2 & df4$stn2 == df4$stn3|df4$stn1 == "ALBERT BRIDGE"|df4$stn2 == "ALBERT BRIDGE"|df4$stn1 == df4$stn2|df4$stn2==df4$stn3),]
-df4 <- anti_join(df4, non.suspect.2015) 
-df4 <- df4[-grep("-PH", df4$stn1),]
-df4 <- df4[-grep("-PH", df4$stn3),]
-## df4 is clear after this filtering 
-non.suspect.2015 <- bind_rows(non.suspect.2015, df4)
-
-
-### now check for type B error (tag id produced that is not there)
-
-df.1 <- read.csv("~/Desktop/Data/R/Data Files/False Filtering/bsb_matched_detections_2012_suspect_v01.csv", stringsAsFactors = FALSE)
-df.1$prev_interval <- hms(df.1$prev_interval)
-df.1$next_interval <- hms(df.1$next_interval)
-df.1 <- na.omit(df.1[(df.1$prev_interval < seconds(50)|df.1$next_interval < seconds(50)),])
-
-
-df.2 <- read.csv("~/Desktop/Data/R/Data Files/False Filtering/bsb_matched_detections_2013_suspect_v01.csv", stringsAsFactors = FALSE)
-df.2$prev_interval <- hms(df.2$prev_interval)
-df.2$next_interval <- hms(df.2$next_interval)
-df.2 <- na.omit(df.2[(df.2$prev_interval < seconds(50)|df.2$next_interval < seconds(50)),])
-
-df.3 <- read.csv("~/Desktop/Data/R/Data Files/False Filtering/bsb_matched_detections_2014_suspect_v01.csv", stringsAsFactors = FALSE)
-df.3$prev_interval <- hms(df.3$prev_interval)
-df.3$next_interval <- hms(df.3$next_interval)
-df.3 <- na.omit(df.3[(df.3$prev_interval < seconds(50)|df.3$next_interval < seconds(50)),])
-
-
-df.4 <- read.csv("~/Desktop/Data/R/Data Files/False Filtering/bsb_matched_detections_2015_suspect_v01.csv", stringsAsFactors = FALSE)
-df.4$prev_interval <- hms(df.4$prev_interval)
-df.4$next_interval <- hms(df.4$next_interval)
-df.4 <- na.omit(df.4[(df.4$prev_interval < seconds(50)|df.4$next_interval < seconds(50)),])
-df.4 <- df.4[-grep("-PH", df.4$stn1),] # get rid of Pictou Harbour
-df.4 <- df.4[-grep("-PH", df.4$stn3),] # get rid of Pictou Harbour
-
-
-false_2013 <- bind_rows(df.2, false.13)
-
-bsb_mr_false_detections <- bind_rows(false_2013, df.1, df.3, df.4)
-
-## write these false detections into a file to filter out of the main datafile 
-write.csv(bsb_mr_false_detections, "data/bsb_mira_river_false_detects.csv")
-
+# 2016-07-11 
+### Resolving detection issues with MAR-TA
+## see emails from last two weeks between me and OTN data centre
 
 
 
@@ -161,7 +92,7 @@ problems$delay_start[problems$receiver == 112793] <- seconds(56) #mrdf > matched
 tail(filter(trash1, receiver == 112793))
 tail(filter(trash2, receiver == 112793))
 problems$delay_end[problems$receiver == 112793] <- seconds(76) #mrdf > matched
-     
+
 head(filter(trash1, receiver == 112794))
 head(filter(trash2, receiver == 112794))
 problems$delay_start[problems$receiver == 112794] <- seconds(7) # mrdf > matched        

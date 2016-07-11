@@ -13,11 +13,34 @@ require(dplyr)
 require(qdap)
 ```
 
+read in matched detection files
+```{r}
+mr1 <- read.csv("Raw Data/bsb_matched2_detections_2012.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+mr2 <- read.csv("Raw Data/bsb_matched2_detections_2013.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+mr3 <- read.csv("Raw Data/bsb_matched2_detections_2014.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+mr4 <- read.csv("Raw Data/bsb_matched2_detections_2015.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+
+mrdf <- bind_rows(mr1, mr2, mr3, mr4)
+remove(mr1, mr2, mr3, mr4)
+
+mrdf <- mrdf[!(mrdf$tagname == "release"|mrdf$station %in% c("ALBERT BRIDGE","MARION BRIDGE", "PICTOU HARBOUR, NS")),] # GET RID OF RELEASE EVENTS
+mrdf <- mrdf[-grep(c("HFX"), mrdf$station),] # get rid of hfx line detection
+mrdf <- mrdf[-grep(c("-PH"), mrdf$station),] # get rid of pictou harbour data
+```
+
+now before going anyfurther, lets get rid of those pesky false detections (see false filtering script)
+```{r}
+falsedf <- read.csv("data/bsb_mira_river_false_detects.csv", stringsAsFactors = F, header = T)
+falsedf$unqdetecid <- falsedf$suspect_detection
+mrdf <- anti_join(mrdf, falsedf, by = "unqdetecid")
+rm(falsedf)
+```
+
 read in data and metadata
 ```{r}
-mrdf <- read.csv("Raw Data/MIRA_RIVER_ALL_YEARS_TIME&STATION_CORRECTED.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+#mrdf <- read.csv("Raw Data/MIRA_RIVER_ALL_YEARS_TIME&STATION_CORRECTED.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".") # this was using VUE extract 
 tagdf <- read.csv("Raw Data/BSB_MR_tagging.csv", stringsAsFactors = FALSE, skip = 4, header = TRUE, sep = ",", dec = "." )
-stndf <- read.csv("Raw Data/bsb_condensed_metadata_2012-2015_UpdatedStations.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+stndf <- read.csv("Raw Data/bsb_condensed_metadata_2012-2015_UpdatedStations_2016-07-11.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
 ```
 
 use cleaning function. detailed cleaning instructions in function  
@@ -32,6 +55,12 @@ source("functions/tag_cleaning_fun.R")
 tagdf <- tag_cleaning_fun(tagdf)
 ```
 
+Cleaning up Stations 
+```{r}
+source("functions/station_cleaning_fun.R")
+stndf <- station_cleaning_fun(stndf)
+```
+
 filter out tags that don't belong to me, arrange data frame by date, and make sure there are no duplicates
 ```{r}
 mrdf <- mrdf[mrdf$id %in% tagdf$id,] # filters out 8060 detections 
@@ -40,10 +69,11 @@ mrdf <- distinct(mrdf) # same same
 ```
 
 now that there is a lull in the action, it may be a good time to enter calibrated sensor values
-```{r}
+```{r} 
+NOT NEEDED IF USING THE BSB MATCHED DETECTION FILES
 #sensor conversion formula  y = mx + b == .43970x -1.7587
-mrdf$sensor <- ifelse(mrdf$unit == "ADC", mrdf$sensor <- 0.43970*mrdf$sensor-1.7587, mrdf$sensor <- mrdf$sensor) 
-mrdf$unit <- ifelse(mrdf$unit == "ADC", "meters", mrdf$unit)
+#mrdf$sensor <- ifelse(mrdf$unit == "ADC", mrdf$sensor <- 0.43970*mrdf$sensor-1.7587, mrdf$sensor <- mrdf$sensor) 
+#mrdf$unit <- ifelse(mrdf$unit == "ADC", "meters", mrdf$unit)
 ```
 
 ugly ass station cleaning # NOTE: these station names are from the most recent VUE export where names were corrected to new station name list. These station names will differ from those in OTN matched detection files 
@@ -80,10 +110,9 @@ mrdf <- mrdf[!mrdf$station == "ERROR",] ### Tag id 33162  was used for a range t
 mrdf <- arrange(mrdf, date, id)
 ```
 
-Cleaning up Stations 
-```{r}
-source("functions/station_cleaning_fun.R")
-stndf <- station_cleaning_fun(stndf)
+NEW* station cleaning of BSB matched detection files
+```{R}
+
 ```
 
 Add River Zone* This will not work since the stations are in character
@@ -137,8 +166,12 @@ stndf$days_active <- stndf$recov_date - stndf$depl_date
 zonedf$activity_interval <- new_interval(zonedf$depl_date, zonedf$recov_date)
 ```
 
-Remove all tag data associeated with tags prior to their official deployment
+
+DO NOT RUN!!!! Not necessary with OTN bsb file
+##Remove all tag data associeated with tags prior to their official deployment
 ```{r}
+
+NOT NECESSARY WITH OTN BSB FILE
 #### remove tag data associated with tags prior to their official deployment ####
 remove.tagdf <- NULL
 for(i in tagdf$id){

@@ -37,14 +37,6 @@ stn.df <- stn.df[!stn.df$station %in% c(350, 200, 100, 13.5),]
 ```
 
 
-- may be able to get rid of this shit #### DELETE THIS with FALSE FILTERING
-```{r}
-# also, there is a false detection in MR.df for tag 33158. Will need to run false filtering tool on my dataframe post ICFT
-trash <- mr.df[mr.df$id == 33158 & mr.df$year == 2013 & mr.df$month == 09,]
-mr.df <- anti_join(mr.df, trash, by = c("date", "id"))
-mr.df <- arrange(mr.df, date, id)
-```
-
 Station Activity throughout the duration of the study
 ```{r}
 #July 2012 to June 2015 == 35 months, 5 days
