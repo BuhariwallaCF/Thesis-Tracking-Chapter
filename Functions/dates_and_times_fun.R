@@ -15,6 +15,12 @@ dates_and_times_fun <- function(df){
   if(length(df$depl_date) >= 1){
     df$depl_date <- ymd_hms(df$depl_date, tz = "UTC")
   }
+  if(length(df$startdate)>= 1){
+    df$startdate <- ymd_hms(df$startdate, tz = "UTC")
+  }
+  if(length(df$enddate)>=1){
+    df$enddate <- ymd_hms(df$enddate, tz = "UTC")
+  }
   if(length(df$recov_date) >= 1){
     df$recov_date <- ymd_hms(df$recov_date, tz = "UTC")
     df$activity_interval <- new_interval(df$depl_date, df$recov_date)

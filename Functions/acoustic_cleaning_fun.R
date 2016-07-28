@@ -16,7 +16,8 @@ acoustic_cleaning_fun <- function(data)
   
   # the following will work for all matched detection files from OTN (above is for VUE exports)
   data$date <- ymd_hms(data$datecollected)
-  data$id <- unlist(strsplit(data$tagname, split = "-"))[3*(1:length(data$tagname))] # separate the elements of the tag ID vector to isolate strictly IDs 
+  #data$id <- unlist(strsplit(data$tagname, split = "-"))[3*(1:length(data$tagname))] # separate the elements of the tag ID vector to isolate strictly IDs 
+  data$id <- sapply(strsplit(data$tagname, split = "-"), "[", 3) # this is more consistent/predictable than the unlist above. 
   #data$receiver.model <- as.character(unlist(strsplit(data$receiver, split = "-"))[seq(from = 1, to = 2*length(data$receiver), by = 2)]) # this sequence is required since strsplit breaks the character vector into two
   # and unlist causes it all to go into one vector. 
   #data$receiver <- as.character(unlist(strsplit(data$receiver, split = "-"))[2*(1:length(data$receiver))])
