@@ -5,7 +5,6 @@ date: "June 15, 2016"
 output: html_document
 ---
 
-
 # this script is to be used for each analysis invloving Mira River Data. It has been scrubbed & its purpose is to stop the repetition from older scripts.
 
 ```{r}
@@ -14,35 +13,11 @@ require(dplyr)
 require(qdap)
 ```
 
-read in matched detection files
-```{r}
-mr1 <- read.csv("Raw Data/bsb_matched2_detections_2012.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
-mr2 <- read.csv("Raw Data/bsb_matched2_detections_2013.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
-mr3 <- read.csv("Raw Data/bsb_matched2_detections_2014.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
-mr4 <- read.csv("Raw Data/bsb_matched2_detections_2015.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
-
-mrdf <- bind_rows(mr1, mr2, mr3, mr4)
-remove(mr1, mr2, mr3, mr4)
-
-mrdf <- mrdf[!(mrdf$tagname == "release"|mrdf$station %in% c("ALBERT BRIDGE","MARION BRIDGE", "PICTOU HARBOUR, NS")),] # GET RID OF RELEASE EVENTS
-mrdf <- mrdf[-grep(c("HFX"), mrdf$station),] # get rid of hfx line detection
-mrdf <- mrdf[-grep(c("-PH"), mrdf$station),] # get rid of pictou harbour data
-mrdf <- mrdf[mrdf$detectedby == "BSB",]
-```
-
-now before going anyfurther, lets get rid of those pesky false detections (see false filtering script)
-```{r}
-falsedf <- read.csv("data/bsb_mira_river_false_detects.csv", stringsAsFactors = F, header = T)
-falsedf$unqdetecid <- falsedf$suspect_detection
-mrdf <- anti_join(mrdf, falsedf, by = "unqdetecid")
-rm(falsedf)
-```
-
 read in data and metadata
 ```{r}
-#mrdf <- read.csv("Raw Data/MIRA_RIVER_ALL_YEARS_TIME&STATION_CORRECTED.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".") # this was using VUE extract 
+mrdf <- read.csv("Raw Data/MIRA_RIVER_ALL_YEARS_TIME&STATION_CORRECTED.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
 tagdf <- read.csv("Raw Data/BSB_MR_tagging.csv", stringsAsFactors = FALSE, skip = 4, header = TRUE, sep = ",", dec = "." )
-stndf <- read.csv("Raw Data/bsb_condensed_metadata_2012-2015_UpdatedStations_2016-07-11.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+stndf <- read.csv("Raw Data/bsb_condensed_metadata_2012-2015_UpdatedStations.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
 ```
 
 use cleaning function. detailed cleaning instructions in function  
@@ -57,13 +32,6 @@ source("functions/tag_cleaning_fun.R")
 tagdf <- tag_cleaning_fun(tagdf)
 ```
 
-Cleaning up Stations 
-```{r}
-source("functions/station_cleaning_fun.R")
-stndf <- station_cleaning_fun(stndf)
-```
-
-# don't need this for matched detection files 
 filter out tags that don't belong to me, arrange data frame by date, and make sure there are no duplicates
 ```{r}
 mrdf <- mrdf[mrdf$id %in% tagdf$id,] # filters out 8060 detections 
@@ -72,11 +40,10 @@ mrdf <- distinct(mrdf) # same same
 ```
 
 now that there is a lull in the action, it may be a good time to enter calibrated sensor values
-```{r} 
-NOT NEEDED IF USING THE BSB MATCHED DETECTION FILES
+```{r}
 #sensor conversion formula  y = mx + b == .43970x -1.7587
-#mrdf$sensor <- ifelse(mrdf$unit == "ADC", mrdf$sensor <- 0.43970*mrdf$sensor-1.7587, mrdf$sensor <- mrdf$sensor) 
-#mrdf$unit <- ifelse(mrdf$unit == "ADC", "meters", mrdf$unit)
+mrdf$sensor <- ifelse(mrdf$unit == "ADC", mrdf$sensor <- 0.43970*mrdf$sensor-1.7587, mrdf$sensor <- mrdf$sensor) 
+mrdf$unit <- ifelse(mrdf$unit == "ADC", "meters", mrdf$unit)
 ```
 
 ugly ass station cleaning # NOTE: these station names are from the most recent VUE export where names were corrected to new station name list. These station names will differ from those in OTN matched detection files 
@@ -91,45 +58,46 @@ mrdf$station <- ifelse(mrdf$station == "01"| mrdf$station =="001", "1",
                                                             ifelse(mrdf$station == "07"| mrdf$station =="007", "7",
                                                                    ifelse(mrdf$station == "08"| mrdf$station =="008", "8",
                                                                           ifelse(mrdf$station == "09"| mrdf$station =="009", "9",
-                                                                                 
-                    ifelse(mrdf$station == "10"| mrdf$station =="010", "10",
-                    ifelse(mrdf$station == "11"| mrdf$station =="011"| mrdf$station =="0011", "11",
-                    ifelse(mrdf$station == "12"| mrdf$station =="012", "12",
-                    ifelse(mrdf$station == "13"| mrdf$station =="013", "13",
-                    ifelse(mrdf$station == "14"| mrdf$station =="014", "14",
-                    ifelse(mrdf$station == "15"| mrdf$station =="015", "15",
-                    ifelse(mrdf$station == "16"| mrdf$station =="016", "16",
-                    ifelse(mrdf$station == "17"| mrdf$station =="017", "17",
-                    ifelse(mrdf$station == "18"| mrdf$station =="018", "18",
-                    ifelse(mrdf$station == "19"| mrdf$station =="019", "19",
-                    ifelse(mrdf$station == "20"| mrdf$station =="020", "20",
-                    ifelse(mrdf$station == "21"| mrdf$station =="021", "21", "ERROR" ))))))))))))))))))))) 
+                                                                                 ifelse(mrdf$station == "10"| mrdf$station =="010", "10",
+                                                                                        ifelse(mrdf$station == "11"| mrdf$station =="011"| mrdf$station =="0011", "11",
+                                                                                               ifelse(mrdf$station == "12"| mrdf$station =="012", "12",
+                                                                                                      ifelse(mrdf$station == "13"| mrdf$station =="013", "13",
+                                                                                                             ifelse(mrdf$station == "14"| mrdf$station =="014", "14",
+                                                                                                                    ifelse(mrdf$station == "15"| mrdf$station =="015", "15",
+                                                                                                                           ifelse(mrdf$station == "16"| mrdf$station =="016", "16",
+                                                                                                                                  ifelse(mrdf$station == "17"| mrdf$station =="017", "17",
+                                                                                                                                         ifelse(mrdf$station == "18"| mrdf$station =="018", "18",
+                                                                                                                                                ifelse(mrdf$station == "19"| mrdf$station =="019", "19",
+                                                                                                                                                       ifelse(mrdf$station == "20"| mrdf$station =="020", "20",
+                                                                                                                                                              ifelse(mrdf$station == "21"| mrdf$station =="021", "21", "ERROR" ))))))))))))))))))))) 
 ## When I want to incorporate MR_13.5 in analysis, I can replace Error with mrdf$station
                                                                                                                     
 
 mrdf <- mrdf[!mrdf$station == "NA",]
 mrdf <- mrdf[!mrdf$station == "ERROR",] ### Tag id 33162  was used for a range test and this escaped above filtering
 #mrdf$station <- as.numeric(mrdf$station) # this is not proper data etiquete 
-mrdf <- arrange(mrdf, date, id)
+
 ```
 
+Cleaning up Stations 
+```{r}
+source("functions/station_cleaning_fun.R")
+stndf <- station_cleaning_fun(stndf)
+```
 
-
-Add River Zone* This will not work since the stations are in character *** this needs to go later since i have not fucked with stations yet
+Add River Zone* 
 ```{r}
 # add RIVER ZONE - *** this will change with the further analysis of the system wide water sampling files
 # NEW 2016-06-13 this is based on natural divisions within the estuary (according to me see above note)
-mrdf$num_stationn <- as.numeric(mrdf$station)
-mrdf$zone <- ifelse(mrdf$num_station <= 4, 1,
-                     ifelse(mrdf$num_station >= 5 & mrdf$num_station <= 8, 2,
-                            ifelse(mrdf$num_station >= 9 & mrdf$num_station <= 15, 3,
-                                   ifelse(mrdf$num_station >= 16, 4, "ERROR")))) 
+mrdf$zone <- ifelse(mrdf$station <= 4, 1,
+                     ifelse(mrdf$station >= 5 & mrdf$station <= 8, 2,
+                            ifelse(mrdf$station >= 9 & mrdf$station <= 15, 3,
+                                   ifelse(mrdf$station >= 16, 4, "ERROR")))) 
 
-stndf$num_station <- as.numeric(stndf$num_station)
-stndf$zone <- ifelse(stndf$num_station <= 4, 1,
-                      ifelse(stndf$num_station >= 5 & stndf$num_station <= 8, 2,
-                             ifelse(stndf$num_station >= 9 & stndf$num_station <= 15, 3,
-                                    ifelse(stndf$num_station >= 16, 4, "ERROR")))) 
+stndf$zone <- ifelse(stndf$station <= 4, 1,
+                      ifelse(stndf$station >= 5 & stndf$station <= 8, 2,
+                             ifelse(stndf$station >= 9 & stndf$station <= 15, 3,
+                                    ifelse(stndf$station >= 16, 4, "ERROR")))) 
 ```
 
 zone df for possible deployment shit.. 
@@ -166,18 +134,8 @@ stndf$days_active <- stndf$recov_date - stndf$depl_date
 zonedf$activity_interval <- new_interval(zonedf$depl_date, zonedf$recov_date)
 ```
 
-NEW* station cleaning of BSB matched detection files * note chunk needs to go below stn_intpiece of code
-```{R}
-system.time(for(i in 1:length(stndf$sn)){
-mrdf$station <- ifelse(mrdf$receiver == stndf$sn[i] & mrdf$date %within% stndf$activity_interval[i], stndf$station[i], mrdf$station)})
-```
-
-
-DO NOT RUN!!!! Not necessary with OTN bsb file
-##Remove all tag data associeated with tags prior to their official deployment
+Remove all tag data associeated with tags prior to their official deployment
 ```{r}
-
-NOT NECESSARY WITH OTN BSB FILE
 #### remove tag data associated with tags prior to their official deployment ####
 remove.tagdf <- NULL
 for(i in tagdf$id){
@@ -187,35 +145,14 @@ for(i in tagdf$id){
   remove.tagdf <- rbind(remove.tagdf, temp)
 }
 
-print(remove.tagdf %>% group_by(id) %>% summarise(n_distinct(date)))
-#  id n_distinct(date)
-#1  5736               21
-#2  5743                8
-#3 33159               22
-#4 33160                1
-#5 33162             1282/5865 (when mr13.5 stays in)
-
 mrdf <- anti_join(mrdf, remove.tagdf, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remember
-mrdf <- arrange(mrdf, date, id)
+mrdf <- arrange(mrdf, date)
 ```
 
 clean up the environment
 ```{r}
-remove(temp,remove.tagdf, i, len, long.tags, acoustic_cleaning_fun, station_cleaning_fun, tag_cleaning_fun)
+remove(temp,remove.tagdf,backup.stndf,tag.depl,tag.end, i, len, long.tags, acoustic_cleaning_fun, station_cleaning_fun, tag_cleaning_fun)
 ```
-
-make sure tag export from VUE matches the new station names/ receiver SN. 
-```{r}
-#to do this:
-#for each date, receiver 
-
-stn.check <- NULL
-for(i in 1:length(stndf$sn)){
-  temp <- mrdf[mrdf$receiver == stndf$sn[i] & mrdf$date >= stndf$depl_date[i] & mrdf$date <= stndf$recov_date[i] & mrdf$station != stndf$station[i],]
- stn.check<- rbind(stn.check, temp)
-}
-```
-
 
 write out the new data files as csvs so they can be used for all future files
 ```{r}

@@ -1,0 +1,234 @@
+---
+title: "BSB_MiraRiver_OverWinteringMigrations"
+author: "Colin F. Buhariwalla"
+date: "July 13, 2016"
+output: html_document
+
+---
+```{r}
+mr.df <- read.csv("data/mrdf.csv", stringsAsFactors = FALSE)
+tag.df <- read.csv("data/tagdf.csv", stringsAsFactors = FALSE)
+stn.df <- read.csv("data/stndf.csv", stringsAsFactors = F)
+```
+
+
+```{r}
+source("functions/dates_and_times_fun.R")
+mr.df  <- dates_and_times_fun(mr.df)
+tag.df <- dates_and_times_fun(tag.df)
+stn.df <- dates_and_times_fun(stn.df)
+```
+
+- format data and metadata - parse dates, set factors, create intervals 
+```{r}
+stn.df <- stn.df[!stn.df$station %in% c(350, 200, 100, 13.5),]
+```
+
+```{r}
+ow.stations <- c(10,11,12,13) #overwintering array
+outside.array <- c(1:9,14:22)
+```
+
+### calculate OW exit stations and arrival at Albert Bridge ####
+```{r}
+leave.fun <- function(data, year, fish){ ## will work on data after 2013 since OW arrays were deployed thenceforth 
+  
+  first.det.out <- head(data[data$year == year & data$id == fish & data$station %in% outside.array,],1) ## first detection in outside array
+  first.det.out$first.albert <- head(data$date[data$year == year & data$id == fish & data$station == 7],1) ## first albert bridge detection
+  last.ow.det <- tail(data[data$year == year & data$id == fish & data$date < first.det.out$date,],1) ## last detection in the OverWintering area 
+  end.ow <- merge(last.ow.det, first.det.out, by="id") # merge the two (long format, maybe want to make it short format)
+  
+  return(end.ow)
+  }
+  
+leave.master=NULL
+  for (i in unique(df$id)){
+    for(j in unique(df$year[df$year >= 2014])){
+  output=leave.fun(df,j,i)
+  leave.master=rbind(leave.master, output)
+}}
+
+leave.fun.2013 <- function(data, fish){ # a lot of unnecessary code here, but it could be decent 
+
+    first.det.out <- head(data[data$year == 2013 & data$month < 6 & data$id == fish & data$station == 7,],1)
+    last.ow.det <- head(data[data$year == 2013 & data$month < 6 & data$id == fish & data$station %in% outside.array,],1)
+    end.ow <- merge(last.ow.det, first.det.out, by ="id")
+    
+return(end.ow)
+}
+
+leave.master.2013 = NULL
+for(i in unique(df$id[df$year == 2013 & df$month <= 6])){
+  output = leave.fun.2013(df,i)
+  leave.master.2013 = rbind(leave.master.2013, output)
+}
+
+leave.master.2013$first.albert <- leave.master.2013$ddate.y ### for some reason when I tried to include a first albert column in leave.fun.2013 I got an error "replacement has 1 row, data has 0"... wtf? 
+
+leave.df <- rbind(leave.master, leave.master.2013)
+
+#leave.df <- leave.df[-c(4:6, 8:11,14:16,18:20)]
+leave.df <- leave.df[c(1,2,3,7,12,13,17,21,22)]
+
+names(leave.df) <- c("id", "last_ow_date", "vr2_ow", "last_ow_stn", "first_out_date", "vr2_out", "first_out_stn", "year", "first_albert")
+
+leave.df <- leave.df[!leave.df$id == 48418,]
+leave.df <- arrange(leave.df, year, id)
+
+leave.df$winter <- ifelse(leave.df$year == 2013, "2012-2013", ## create a winter category so we can figure out how to match up with entry data 
+                          ifelse(leave.df$year == 2014, "2013-2014",
+                                 ifelse(leave.df$year == 2015, "2014-2015", "ERROR")))
+
+```
+
+
+### calculate entrance to OW area and when they've left albert Bridge
+```{r}
+enter.fun <- function(data, year, fish){
+  
+  if(year == 2012){
+  last.detection.out <- tail(data[data$year == 2012 & data$id == fish & data$station %in% outside.array,], 1)
+  first.detection.in <- tail(data[data$year == 2012 & data$id == fish & data$station %in% outside.array,], 1)
+  last.albert <- tail(data[data$year == 2012 & data$id == fish & data$station == 7, c(7,1)], 1)
+  names(last.albert) <- c("id", "last_albert")
+  } else{
+    last.detection.out <- tail(data[data$year == year & data$id == fish & data$station %in% outside.array,], 1)
+    first.detection.in <- head(data[data$year == year & data$id == fish & data$date > last.detection.out$date & data$station %in% ow.stations,], 1)
+    last.albert <- tail(data[data$year == year & data$id == fish & data$station == 7, c(7,1)], 1)
+    names(last.albert) <- c("id", "last_albert") 
+  }
+
+  start.ow <- merge(last.detection.out, first.detection.in, by = "id")
+  start.ow <- merge(start.ow, last.albert, by = "id")
+  
+return(start.ow)
+       }
+
+enter.df <- NULL 
+for(i in unique(df$id)){ ### this takes 1 min 45 seconds on my (CBU) computer
+  for(j in unique(df$year)){
+    output = enter.fun(df, j, i)
+    enter.df <- rbind(enter.df, output)
+  }
+}
+
+
+enter.df <- enter.df[c(1,2,3,7,12,13,17,21,22)] ## change out 2 & 12 for 8 and 18
+names(enter.df) <- c("id", "out_date", "out_vr2", "out_station", "ow_date", "ow_vr2", "ow_station", "year", "last_albert")
+enter.df$winter <- ifelse(enter.df$year == 2012, "2012-2013",
+                          ifelse(enter.df$year == 2013, "2013-2014",
+                                 ifelse(enter.df$year == 2014, "2014-2015", "ERROR"))) 
+
+enter.df <-enter.df %>% ## for some reason the enter.fun produces duplicates likely to do with the if statement 
+              arrange(year, id) %>%
+              distinct()
+```
+
+#### Figure out how long fish were overwintering for #### - will define as from first detection in the OW area to the last detection in the ow area 
+```{r}
+ow.df <- merge(enter.df, leave.df, by = c("id","winter")) ## only 22 records for this 
+ow.df <- arrange(ow.df, winter)
+ow.df$ow_duration <- day(as.period(new_interval(ow.df$ow_date, ow.df$last_ow_date), "days"))
+ow.df$mig_duration <- as.period(new_interval(ow.df$last_albert, ow.df$ow_date))
+ow.summary <- ddply(ow.df, .(id, winter), summarise, 
+                    last.albert = last_albert,
+                    start.ow = ow_date,
+                    end.ow = last_ow_date,
+                    ow.duration = ow_duration,
+                    last.out = out_station,
+                    first.ow = ow_station,
+                    last.ow = last_ow_stn,
+                    first.out = first_out_stn)
+```
+
+#### figure out how long fish took to migrate upriver
+```{r}
+enter.df$mig_duration <- as.duration(new_interval(enter.df$last_albert, enter.df$ow_date)) 
+
+## need to convert all to hours or days from duration
+## NOTE **** CAN'T USE 2012 MIGRATION TIMES AS WE HAVE NO OW ARRAY WITHIN THE SYSTEM
+
+mig.dur <- ddply(enter.df, .(winter), summarise, 
+            n = length(unique(id)),
+            mean_mig_dur = mean(mig_duration)/(60*60*24),## days
+            sd_mig_dur = sd(mig_duration)/(60*60*24)) ## days
+
+#MIGRATION HOURS
+#   winter  n mean_mig_dur sd_mig_dur
+#1 2012-2013 14     77.23222  230.73869
+#2 2013-2014 19     77.20889  124.97298
+#3 2014-2015 10     30.32306   25.61724
+
+#MIGRATION DAYS
+#   winter  n mean_mig_dur sd_mig_dur
+#1 2012-2013 14     3.218009   9.614112
+#2 2013-2014 19     3.217037   5.207207
+#3 2014-2015 10     1.263461   1.067385
+
+```
+
+### defining periods for IR 
+```{r}
+ddply(leave.df, .(year), summarize, end.ow = median(last_ow_date))
+ddply(enter.df, .(year), summarise, 
+      n = length(unique(id)),
+      start.ow = mean.Date(ow_date),
+      sd.start.ow = sd(ow_date))
+
+entry.summary <- enter.df %>%
+                  group_by(year) %>%
+                   summarise(
+                    n = length(unique(id)),
+                    start_ow = mean(ow_date),
+                    last_albert = mean(last_albert))
+
+entry.summary$ow_sd[1] <- sd(enter.df$ow_date[enter.df$year == 2012])/(3600*24)# need to do this because dplyr/plyr can't handle converting SD to numbers... returns a date 
+entry.summary$ow_sd[2] <- sd(enter.df$ow_date[enter.df$year == 2013])/(3600*24)
+entry.summary$ow_sd[3] <- sd(enter.df$ow_date[enter.df$year == 2014])/(3600*24)
+
+entry.summary$last_albert_sd[1] <- sd(enter.df$last_albert[enter.df$year == 2012])/(3600*24)# need to do this because dplyr/plyr can't handle converting SD to numbers... returns a date 
+entry.summary$last_albert_sd[2] <- sd(enter.df$last_albert[enter.df$year == 2013])/(3600*24)
+entry.summary$last_albert_sd[3] <- sd(enter.df$last_albert[enter.df$year == 2014])/(3600*24)
+
+#year  n            start_ow         last_albert     ow_sd last_albert_sd
+#1 2012 14 2012-11-27 18:23:57 2012-11-23 22:17:08 10.341941       3.730628
+#2 2013 19 2013-11-18 18:06:45 2013-11-15 00:00:00  5.525523       4.242641
+#3 2014 10 2014-11-19 18:53:34 2014-11-18 00:00:00  4.804197       4.737557
+
+leave.df$descent_time_H <- difftime(leave.df$first_out_date, leave.df$last_ow_date, units = "hours")
+leave.df$descent_time_D <- difftime(leave.df$first_out_date, leave.df$last_ow_date, units = "days")
+
+  leave.summary <- leave.df[!leave.df$id == 48418,] %>%
+                  group_by(year) %>%
+                   summarise(
+                    n = length(unique(id)),
+                    end_ow = mean(last_ow_date))
+
+leave.summary$last_sd[1] <- sd(leave.df$last_ow_date[leave.df$year == 2013])/(3600*24)
+leave.summary$last_sd[2] <- sd(leave.df$last_ow_date[leave.df$year == 2014])/(3600*24)
+leave.summary$last_sd[3] <- sd(leave.df$last_ow_date[leave.df$year == 2015])/(3600*24)
+
+ow.summary[!ow.summary$id == 48418,] %>%
+  group_by(winter)%>%
+  summarise(
+    n = length(unique(id)),
+    mean_duration = mean(duration),
+    sd_duration = sd(duration))
+
+#year  n              end_ow  last_sd
+#1 2013  5 2013-04-20 07:20:32 3.528795
+#2 2014 11 2014-04-29 10:40:56 5.565831
+#3 2015  5 2015-05-08 21:06:06 3.135987
+
+#year  n            start_ow         last_albert     ow_sd last_albert_sd
+#1 2012 14 2012-11-27 18:23:57 2012-11-23 22:17:08 10.341941       3.730628
+#2 2013 19 2013-11-18 18:06:45 2013-11-15 00:00:00  5.525523       4.242641
+#3 2014 10 2014-11-19 18:53:34 2014-11-18 00:00:00  4.804197       4.737557
+
+# winter  n mean_duration sd_duration
+#1 2012-2013  5      146.0000    3.674235
+#2 2013-2014 11      160.6364    9.124393
+#3 2014-2015  5      166.2000    2.387467
+```
+
+- tagging info 

@@ -1,0 +1,386 @@
+---
+title: "Mira River - Striped Bass - Time at Station"
+author: "Colin Buhariwalla - addapted from Laura Logan-Chesney (see original info below)"
+date: "2015-06-25 - Thursday"
+output: html_document
+---
+---
+title: "Vemco sturgeon data"
+author: "LLC"
+date: "Friday, November 07, 2014"
+output: html_document
+---
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+
+- to install packages
+```{r}
+require(lubridate)
+require(plyr)
+require(ggplot2)
+#require(reshape2)
+require(knitr)
+require(scales)
+require(RColorBrewer)
+require(dplyr)
+require(grid)
+require(gridExtra)
+```
+
+- to set the working directory... session, etc.
+```{r}
+setwd("~/Desktop/Data/R/Data Files")
+wd <- getwd()
+```
+
+- to read in the csvs with MB VUE data (for each year, 2012-2015)
+```{r}
+mr.df <- read.csv("~/Desktop/Data/R/Data Files/MiraRiver_StripedBass_AllDetects_Cleaned_2015-06-25.csv", stringsAsFactors = FALSE)
+tag.df <- read.csv("~/Desktop/Data/R/Data Files/MiraRiver_StripedBass_TagMetadata_2015-06-25.csv", stringsAsFactors = FALSE)
+stn.df <- read.csv("~/Desktop/Data/R/Data Files/MiraRiver_StripedBass_StationMetadata_2015-06-25.csv", stringsAsFactors = F)
+```
+
+- format data and metadata - parse dates, set factors, create intervals 
+```{r}
+mr.df$date <- ymd_hms(mr.df$date)
+mr.df$ddate <- ymd(mr.df$ddate)
+mr.df$id <- as.factor(mr.df$id)
+mr.df$station <- as.factor(mr.df$station)
+
+  
+tag.df$depl_date <- ymd_hms(tag.df$depl_date)
+tag.df$end_date <- ymd_hms(tag.df$end_date)
+tag.df$tag_int <- new_interval(tag.df$depl_date, tag.df$end_date, tz = "UTC")
+tag.df$id <- as.factor(tag.df$id)
+
+stn.df$depl_date <- ymd_hms(stn.df$depl_date)
+stn.df$recov_date <- ymd_hms(stn.df$recov_date)
+stn.df$station_int <- new_interval(stn.df$depl_date, stn.df$recov_date, tz = "UTC")
+stn.df <- stn.df[!stn.df$station %in% c(350, 200, 100, 13.5),]
+stn.df$station <- as.factor(stn.df$station)
+
+mr.df.backup <- mr.df
+tag.df.backup <- tag.df
+stn.df.backup <- stn.df
+
+```
+
+
+- make sure that there are no tags in the data before they're into fish   
+```{r}
+remove.tags.df <- NULL
+for(i in tag.df$id){
+  temp <- mr.df[mr.df$id == i & mr.df$date < tag.df$depl_date[tag.df$id == i],]  
+  len <- length(temp$date)
+  temp$tagdate <- rep(tag.df$depl_date[tag.df$id == i], times = len)
+  remove.tags.df <- rbind(remove.tags.df, temp)
+}
+
+print(remove.tags.df %>% group_by(id) %>% summarise(n_distinct(date)))
+
+#  id n_distinct(date)
+#1  5736               21
+#2  5743                8
+#3 33159               22
+#4 33160                1
+#5 33162             1282
+
+mr.df <- anti_join(mr.df, remove.tags.df, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remember "In Hadley We Trust"  
+
+# also, there is a false detection in MR.df for tag 33158. Will need to run false filtering tool on my dataframe post ICFT
+trash <- mr.df[mr.df$id == 33158 & mr.df$year == 2013 & mr.df$month == 09,]
+
+mr.df <- anti_join(mr.df, trash, by = c("date", "id"))
+
+mr.df <- arrange(mr.df, date, id)
+
+
+```
+
+- create 1 dectection record, per station, per day
+```{r}
+mr.dday <- mr.df %>%
+  group_by(ddate, id, station) %>% # maybe just ddate
+  select(id, ddate) %>% ## think about using station or receiver sn. 
+  summarise(
+    detects_pday = length(ddate)
+    )
+```
+
+- cbPalette with both black and grey (needed 9 colours) # WHY DO YOU NEED ONLY 9 COLOURS? 
+```{r}
+cbPalette <- c("#000000", "#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+- plot of station availability/detections
+```{r}
+
+p <-  ggplot(data = mr.df[mr.df$id == i,], aes(date, station)) + geom_point() +  theme_bw() + xlab("Date") + ylab("Station") + geom_segment(data = stn.df, aes(x = depl_date, xend = recov_date, yend = station))  + xlim(c(tag.df$depl_date[tag.df$id == i], tag.df$end_date[tag.df$id == i])) + scale_y_discrete(limits = levels(stn.df$station)) + facet_wrap(~id)
+ 
+plot <-function(i){ ggplot(data = mr.df[mr.df$id == i,], aes(date, station)) + geom_point(size = 3) +  theme_bw() + 
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + geom_segment(data = stn.df, aes(x = depl_date, xend = recov_date, yend = station)) + xlab("Date") + ylab("Station") + scale_x_datetime(breaks = date_breaks("3 months"), labels = date_format("%b %Y"), limit = c(tag.df$depl_date[tag.df$id == i], tag.df$end_date[tag.df$id == i])) + ggtitle(i) + scale_y_discrete(limits = rev(levels(stn.df$station)))}
+
+plot1 <-function(i){ ggplot(data = mr.df[mr.df$id == i,], aes(date, station)) + geom_point(size = 3) +  theme_bw() + 
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + geom_segment(data = stn.df, aes(x = depl_date, xend = recov_date, yend = station)) + xlab("Date") + ylab("Station") + scale_x_datetime(breaks = date_breaks("1 months"), minor_breaks = "1 week", labels = date_format("%b %Y"), limit = c(tag.df$depl_date[tag.df$id == i], tag.df$end_date[tag.df$id == i])) + ggtitle(i) + scale_y_discrete(limits = rev(levels(stn.df$station)))}
+
+plot2 <- function(i){ ggplot(data = mr.df[mr.df$id == i,], aes(date, station)) + geom_point(size = 3) +  theme_bw() + 
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + geom_segment(data = stn.df, aes(x = depl_date, xend = recov_date, yend = station)) + xlab("Date") + ylab("Station") + scale_x_datetime(breaks = date_breaks("3 months"), labels = date_format("%b %Y"), limit = c(tag.df$depl_date[tag.df$id == i], tag.df$end_date[tag.df$id == i])) + ggtitle(i) + scale_y_discrete(limits = rev(levels(stn.df$station)))}
+
+p.33158 <- plot(33158)
+p.33159 <- plot(33159)
+p.33160 <- plot(33160)
+p.33161 <- plot(33161)
+p.33162 <- plot(33162) 
+
+p.48407 <- plot2(48407)
+p.48408 <- plot2(48408) 
+p.48409 <- plot2(48409)
+p.48410 <- plot2(48410)
+p.48411 <- plot2(48411)
+p.48418 <- plot2(48418)
+
+p.5720 <- plot(5720) # 2012
+p.5721 <- plot1(5721)
+p.5722 <- plot1(5722)
+p.5723 <- plot1(5723)
+p.5724 <- plot1(5724)
+p.5725 <- plot1(5725)
+p.5726 <- plot1(5726)
+p.5728 <- plot1(5728) 
+p.5729 <- plot1(5729) # Start 2013
+p.5730 <- plot1(5730)
+p.5732 <- plot1(5732)
+p.5733 <- plot1(5733)
+p.5734 <- plot1(5734)
+p.5735 <- plot1(5735)
+p.5736 <- plot1(5736)
+p.5737 <- plot1(5737)
+p.5738 <- plot1(5738)
+p.5739 <- plot1(5739)
+p.5742 <- plot1(5742) # start 2014
+p.5743 <- plot1(5743)
+
+```
+
+```{r}
+ggsave(p.33158, file = "33158.png", height = 13, width = 15)
+ggsave(p.33159, file = "33159.png", height = 13, width = 15)
+ggsave(p.33160, file = "33160.png", height = 13, width = 15)
+ggsave(p.33161, file = "33161.png", height = 13, width = 15)
+ggsave(p.33162, file = "33162.png", height = 13, width = 15)
+
+ggsave(p.48407, file = "48407.png", height = 13, width = 15)
+ggsave(p.48408, file = "48408.png", height = 13, width = 15)
+ggsave(p.48409, file = "48409.png", height = 13, width = 15)
+ggsave(p.48410, file = "48410.png", height = 13, width = 15)
+ggsave(p.48411, file = "48411.png", height = 13, width = 15)
+ggsave(p.48418, file = "48418.png", height = 13, width = 15)
+
+
+ggsave(p.5720, file = "5720.png", height = 13, width = 15)
+ggsave(p.5721, file = "5721.png", height = 13, width = 15)
+ggsave(p.5722, file = "5722.png", height = 13, width = 15)
+ggsave(p.5723, file = "5723.png", height = 13, width = 15)
+ggsave(p.5724, file = "5724.png", height = 13, width = 15)
+ggsave(p.5725, file = "5725.png", height = 13, width = 15)
+ggsave(p.5726, file = "5726.png", height = 13, width = 15)
+ggsave(p.5728, file = "5728.png", height = 13, width = 15)
+ggsave(p.5729, file = "5729.png", height = 13, width = 15)
+ggsave(p.5730, file = "5730.png", height = 13, width = 15)
+ggsave(p.5732, file = "5732.png", height = 13, width = 15)
+ggsave(p.5733, file = "5733.png", height = 13, width = 15)
+ggsave(p.5734, file = "5734.png", height = 13, width = 15)
+ggsave(p.5735, file = "5735.png", height = 13, width = 15)
+ggsave(p.5736, file = "5736.png", height = 13, width = 15)
+ggsave(p.5737, file = "5737.png", height = 13, width = 15)
+ggsave(p.5738, file = "5738.png", height = 13, width = 15)
+ggsave(p.5739, file = "5739.png", height = 13, width = 15)
+ggsave(p.5742, file = "5742.png", height = 13, width = 15)
+ggsave(p.5743, file = "5743.png", height = 13, width = 15)
+
+```
+
+
+#more specific plots  
+```{r}
+ 
+i <- 48410
+p.48410.2014 <- ggplot(data = mr.df[mr.df$id == i,], aes(date, station)) + geom_point(size = 3) +  theme_bw() + 
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + geom_segment(data = stn.df, aes(x = depl_date, xend = recov_date, yend = station)) + xlab("Date") + ylab("Station") + scale_x_datetime(breaks = date_breaks("2 weeks"), labels = date_format("%b %d"), limit = c(ymd("2014-07-20"),ymd("2014-09-15"))) + ggtitle(i) + scale_y_discrete(limits = rev(levels(stn.df$station)))
+
+p.5736.2013 <- ggplot(data = mr.df[mr.df$id == 5736,], aes(date, station)) + geom_point(size = 3) +  theme_bw() + 
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + geom_segment(data = stn.df, aes(x = depl_date, xend = recov_date, yend = station)) + xlab("Date") + ylab("Station") + scale_x_datetime(breaks = date_breaks("2 weeks"), labels = date_format("%b %d"), limit = c(ymd("2013-09-20"),ymd("2013-10-20"))) + ggtitle(5736) + scale_y_discrete(limits = rev(levels(stn.df$station)))
+
+p.5729.2013 <- ggplot(data = mr.df[mr.df$id == 5729,], aes(date, station)) + geom_point(size = 3) +  theme_bw() + 
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + geom_segment(data = stn.df, aes(x = depl_date, xend = recov_date, yend = station)) + xlab("Date") + ylab("Station") + scale_x_datetime(breaks = date_breaks("2 weeks"), labels = date_format("%b %d"), limit = c(ymd("2013-08-20"),ymd("2013-10-15"))) + ggtitle(5729) + scale_y_discrete(limits = rev(levels(stn.df$station)))
+
+p.5720.2012 <- ggplot(data = mr.df[mr.df$id == 5720,], aes(date, station)) + geom_point(size = 3) +  theme_bw() + 
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + geom_segment(data = stn.df, aes(x = depl_date, xend = recov_date, yend = station)) + xlab("Date") + ylab("Station") + scale_x_datetime(breaks = date_breaks("2 weeks"), labels = date_format("%b %d"), limit = c(ymd("2012-10-15"),ymd("2012-12-15"))) + ggtitle(5720) + scale_y_discrete(limits = rev(levels(stn.df$station)))
+
+ggsave(p.48410.2014, file = "48410.2014.png", height = 13, width = 15)
+ggsave(p.5736.2013, file = "5736.2013.png", height = 13, width = 15)
+ggsave(p.5729.2013, file = "5729.2013.png", height = 13, width = 15)
+ggsave(p.5720.2012, file = "5720.2012.png", height = 13, width = 15)
+```
+
+```{r}
+ p2 <- ggplot(data = mr.df, aes(date, station)) + geom_point() +  theme_bw() + xlab("Date") + ylab("Station") + geom_segment(data = stn.df, aes(x = depl_date, xend = recov_date, yend = station)) + scale_y_discrete(limits = levels(stn.df$station)) 
+
+plots2 = mr.df %>%
+  group_by(id) %>%
+  do(plots = p2 %+% . + facet_wrap(~id, scales = "free"))
+
+
+plot.2015 <- ggplot(data = mr.df[mr.df$year == 2015,], aes(date, id, group = id)) + geom_point(aes(colour = station), size = 4) + geom_line() + theme_bw() + xlab("Date") + ylab("Vemco Tag ID") #+ scale_colour_manual(values = cbPalette)
+
+```
+
+- plot receiver coverage 
+```{r}
+ggplot(data = stn.df, aes(station_int, station)) + geom_line() +  theme_bw() +
+    xlab("Date") + ylab("Station")  + scale_y_discrete(limits = levels(stn.df$station))+theme(axis.text = element_text(size = 15))
+
+### plot of station coverage of receivers over time. Must HAVE fish data there to inherit date characteristics for the x axis 
+### NEED TO FIX THE LAST DATE ON THE X AXIS - NO INTERNET CONNECTIVITY TO BE ABLE TO CHANGE THE SHIT... 
+(p.station_coverage <- ggplot(data = mr.df[mr.df$id == 48408,], aes(date, station)) +   theme_bw() + 
+   ggtitle("Station Deployment History") + geom_segment(data = stn.df, aes(x = depl_date, xend = recov_date, y = station, yend = station)) + xlab("Date") + ylab("Station")  + scale_x_datetime(labels = date_format("%Y-%b"), limit = c(min(stn.df$depl_date), max(stn.df$recov_date))) + scale_y_discrete(limits = rev(levels(stn.df$station))) + theme(axis.text = element_text(size = rel(1.5)), axis.title = element_text(size =20), plot.title = element_text(size = 20)))
+
+
+ggsave(p.station_coverage, file = "MR_Station_Coverage.png", height = 15, width = 15)
+
+```
+
+
+
+- plot 1 detection per day and compare with all detections
+```{r}
+plot.2012.1dpd <- ggplot(data = mr.dday[mr.dday$ddate < ymd("2012-09-01"),], aes(ddate, id, group = id)) + geom_point(aes(colour = station), size = 4) + geom_line() + theme_bw() + xlab("Date") + ylab("Vemco Tag ID") + scale_colour_manual(values = cbPalette) 
+
+plot.2012.1dpd
+plot.2012
+```
+
+plot stations with circles indicating total number of tags active per day
+```{r}
+
+#July 2012 to June 2015 == 35 months, 5 days
+start <- (ymd_hms("2012-07-01 00:00:01") + months(0:36))
+end   <- (ymd_hms("2012-08-01 23:59:59") + months(0:36) - days(1)) # this little beauty gives you the last day of every month for 0:x months. 
+study.month <- data.frame(start, end)
+
+stn.df$station <- as.factor(stn.df$station)
+
+(p.station_coverage <- ggplot(data = study.month, aes(start)) +   theme_bw() + 
+   geom_segment(data = stn.df, aes(x = depl_date, xend = recov_date, y = station, yend = station)) + xlab("Date") + ylab("Station")  + scale_x_datetime(breaks = pretty_breaks(13),labels = date_format("%Y-%b"), limit = c(min(stn.df$depl_date), max(stn.df$recov_date))) + scale_y_discrete(limits = rev(levels(stn.df$station))) + theme(axis.text = element_text(size = rel(1.5)), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black")))
+
+```
+
+produce the above plot mapping the number of tags at each station
+```{r}
+stn.det <- mr.df %>% group_by(ddate, station) %>% summarise(det_tags = n_distinct(id))
+
+stn.det$act_tags <- NULL
+for(i in 1:length(stn.det$ddate)){
+  stn.det$act_tags[i] <- length(which(stn.det$ddate[i] %within% tag.df$tag_int)) 
+}
+
+stn.det <- mutate(stn.det, prop_tags = det_tags/act_tags) # prop_tags = det_tags/act_tags = The proportion of tags (prop_tags) detected at each station (det_tags) relative to the number of active tags (act_tags) in the system
+
+## need to add a legend to the plot ## legend for prop_tags + change the legend title and labels
+(p.MR_activetags_allyrs  <- p.station_coverage + geom_point(data = stn.det, aes(x=ddate, y = as.factor(station), size = prop_tags), alpha = 0.3) + scale_size_continuous(name = "Percent", range = c(4,10), breaks=c(0.1, 0.2, 0.3, 0.4, 0.5,0.6,0.7,0.8,0.9,1.0), labels=c("10","20", "30", "40", "50","60","70","80","90","100")) )
+```
+
+```{r}
+#create the same plot as above, but based on month
+stn.det$month <- month(stn.det$ddate, label= TRUE, abbr = FALSE)
+
+(p.MR_activetags_month <- ggplot(data = stn.det, aes(month, as.factor(station), size = prop_tags)) + geom_point() +  theme_bw() + 
+      scale_size_continuous(name = "Percent", range = c(4,10), breaks=c(0.1, 0.2, 0.3, 0.4, 0.5,0.6,0.7,0.8,0.9,1.0), labels=c("10","20", "30", "40", "50","60","70","80","90","100")) +  scale_y_discrete(limits = rev(levels(stn.df$station))) + theme(axis.text = element_text(size = rel(1.5)), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black")))
+
+```
+
+well, how many tags are making up these data? 
+```{r}
+tag.activity <- stn.det %>% select(ddate, month, act_tags) %>% distinct(ddate)
+#tag.activity.month <- stn.det %>% select(month, act_tags) %>% distinct(month)
+
+(p.n_activetags <- ggplot(tag.activity, aes(ddate, act_tags, size = 1)) + geom_point() + theme_bw() + xlab("Date") + ylab("Number of Active Tags") +
+      scale_size_continuous(range = c(2,10)) + theme(legend.position = "none") + ylim(0,20) + theme(axis.text = element_text(size = rel(1.5)), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black")) + scale_x_datetime(breaks = pretty_breaks(13),labels = date_format("%Y-%b"))) 
+
+```
+
+I need to figure out how to sum the cumulative number of active tags per month. 
+# solution : create a yrmo category for stn.det, summary by the max for each yrmo, then, add the total for each like months together... so, data should be one observation per month per year, then summarise.. need to have separate ids.... 
+
+```{r}
+### so in order to achieve the below, I need to go through each day, of station activity (stn.det) and produce a sheet of all possible dates for each tag id. maybe make this by taking tag.df 
+
+tag.activity.month <- tag.df %>% group_by(id) %>% do(data.frame(date = seq(.$depl_date, .$end_date, by = "1 day")))
+
+tag.activity.month$month <- month(tag.activity.month$date, label = TRUE, abbr = FALSE)
+
+tag.activity.month <- tag.activity.month %>% group_by(month) %>% summarise(all_tags = n_distinct(id))
+
+p.tag.activity.month <- ggplot(monthly.tag.activity, aes(month, all_tags)) + geom_bar(stat = "identity") +  theme_bw() + xlab("Date") + ylab("Number of Active Tags") +
+     theme(axis.text = element_text(size = rel(1.5)), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))  
+```
+
+Let's try something from the above code..... 
+```{r}
+
+
+## note this will just be the number of MAX active tags per month and no the number of tags per ddate (some tags drop oout mid month)... DISCUSS with MIKE... 
+tag.activity.month$yrmo <- ymd(paste(year(tag.activity.month$date), month(tag.activity.month$date), "01", sep = "-"))
+
+tag.activity.yrmo <- tag.activity.month %>% group_by(yrmo) %>% summarise(act_tags = n_distinct(id))
+
+p.tag.activity <- ggplot(tag.activity.yrmo, aes(yrmo, act_tags)) + geom_bar(stat="identity") + theme_bw() + xlab("Date") + ylab("Number of Active Tags") + theme(legend.position = "none") + ylim(0,20) + theme(axis.text = element_text(size = rel(1.5)), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black")) + scale_x_datetime(breaks = pretty_breaks(13),labels = date_format("%Y-%b")) 
+
+```
+
+```{r}
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+  
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+  
+  numPlots = length(plots)
+  
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                     ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+  
+  if (numPlots==1) {
+    print(plots[[1]])
+    
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+      
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+```
+
+
+```{r}
+p1 <- multiplot(p.MR_activetags_allyrs, p.tag.activity, cols=1)
+p2 <- multiplot(p.MR_activetags_month, p.tag.activity.month)
+
+```
