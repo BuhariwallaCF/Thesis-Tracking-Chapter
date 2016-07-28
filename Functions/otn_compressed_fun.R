@@ -1,7 +1,7 @@
 #2016-07-28 Colin F Buhariwalla
 # function to read in OTN comressed detection files and spit them into something I can use for calculations
 
-otn_compressed_fun <- function(){
+otn_compressed_fun <- function(new_df){
   mrdf2015 <- read.csv("data/mrdf2015_compressed_detections_v00.csv", stringsAsFactors = F)
   mrdf2014 <- read.csv("data/mrdf2014_compressed_detections_v00.csv", stringsAsFactors = F)
   mrdf2013 <- read.csv("data/mrdf2013_compressed_detections_v00.csv", stringsAsFactors = F)
@@ -15,7 +15,7 @@ otn_compressed_fun <- function(){
   
   df$id <- sapply(strsplit(df$startunqdetecid, split = "-"), "[",4)
   
-  #new_df <- df
+  new_df <- df
   rm(mrdf2012,mrdf2013,mrdf2014,mrdf2015, df)
-  return(df) # may not even need this
+  return(new_df) # may not even need this
 }
