@@ -51,6 +51,12 @@ stn.df$station <- as.factor(stn.df$station) # yep?
 
 ```
 
+turn this off for serious analysis # just puts vertical lines in on the month so I can see it better. 
+```{r}
+ggplot(data = study.month, aes(start)) +   theme_bw() + 
+   geom_segment(data = stn.df, aes(x = depl_date, xend = recov_date, y = station, yend = station)) + xlab("Date") + ylab("Station")  + scale_x_datetime(breaks = pretty_breaks(13),labels = date_format("%Y-%b"), limit = c(min(stn.df$depl_date), max(stn.df$recov_date))) + scale_y_discrete(limits = rev(levels(stn.df$station))) + theme(axis.text = element_text(size = rel(1.5)), axis.title = element_text(size =20), plot.title = element_text(size = 20)) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black")) + geom_vline(aes(xintercept = as.numeric(start)), study.month, colour = "red")
+```
+
 produce the above plot mapping the number of tags at each station
 ```{r}
 stn.det <- mr.df %>% group_by(ddate, station) %>% summarise(det_tags = n_distinct(id))
