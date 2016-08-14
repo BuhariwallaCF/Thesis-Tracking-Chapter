@@ -30,8 +30,12 @@ rsdf <- multiple_csv_import_bind_fun("raw data", "sunrise") #rise set df
 
 need to clean this file up and isolate the data
 ```{r}
-names(rsdf) <- c("date", "nautical.twilight.start","sunrise","sunset","nautical.twilight.end","sidreal")
+names(rsdf) <- c("date", "nautical.twilight.start","sunrise","sunset","nautical.twilight.end","sidreal", "year")
 rsdf$date <- gsub(" ", "-", date)
+rsdf$date <- as.Date(paste(year, date1, sep = "-"),"%Y-%B-%d")
+rsdf$date2 <- as.Date(rsdf$date, "%Y-%B-%d")
+rsdf$nts <- ymd_hm(paste(rsdf$date, rsdf$nautical.twilight.start, sep = " "))
+rsdf$nte <- ymd_hm(paste(rsdf$date, rsdf$nautical.twilight.end, sep = " "))
 # need to paste year, and format date properly ### stop here at 2016-08-13 
 ```
 
