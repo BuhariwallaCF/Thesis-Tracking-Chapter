@@ -1,6 +1,11 @@
 #2016-08-14 Colin F. Buhariwalla
 #NRC_sunrise_sunset_cleaning_fun
 
+#DATA SOURCE:
+#http://www4.rncan.gc.ca/search-place-names/unique/CAZVS
+#http://www.nrc-cnrc.gc.ca/eng/services/sunrise/advanced.html
+
+
 NRC_sunrise_sunset_cleaning_fun <- function(df){
   #Function_NOTES: 
   #must have columns:
@@ -11,9 +16,10 @@ NRC_sunrise_sunset_cleaning_fun <- function(df){
   df$date <- gsub(" ", "-", df$date)
   df$date <- as.character(as.Date(df$date, "%Y-%B-%d"))
   
-  df$nts <- ymd_hm(paste(df$date, df$nautical.twilight.start.time, sep = " ")) #pasting together nautical twilights start 
-  df$nte <- ymd_hm(paste(df$date, df$nautical.twilight.end.time, sep = " ")) # pasting together nautical twilight end
-  df$sr <- ymd_hm(paste(df$date, df$sunrise.time, sep = " ")) # pasting together sunrise 
-  df$ss <- ymd_hm(paste(df$date, df$sunset.time, sep = " ")) # pasting together sunset times
+  df$ntstart <- ymd_hm(paste(df$date, df$nautical.twilight.start.time, sep = " "), tz = "America/Halifax") #pasting together nautical twilights start 
+  df$ntend <- ymd_hm(paste(df$date, df$nautical.twilight.end.time, sep = " "),tz = "America/Halifax") # pasting together nautical twilight end
+  df$sunrise <- ymd_hm(paste(df$date, df$sunrise.time, sep = " "),tz = "America/Halifax") # pasting together sunrise 
+  df$sunset <- ymd_hm(paste(df$date, df$sunset.time, sep = " "),tz = "America/Halifax") # pasting together sunset times
     return (df)
 }
+

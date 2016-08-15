@@ -12,13 +12,12 @@ require(doBy)
 require(plyr)
 require(dplyr)
 require(jpeg)
-#require(reshape2)
 require(tidyr)
 
 
 ```{r}
 source("functions/left_and_leaving_fun.R") # reads a cleaned up copy of the left and leaving dataframe
-df <- left_and_leaving_fun(df) # ohh yeah, lookit that shit
+ll <- left_and_leaving_fun(ll) # ohh yeah, lookit that shit
 ```
 
 
@@ -34,142 +33,57 @@ rs <- multiple_csv_import_bind_fun("raw data", "sunrise") #rise set df
 ```{r}
 source("functions/NRC_sunrise_sunset_cleaning_fun.R")
 rs <- NRC_sunrise_sunset_cleaning_fun(rs)
+rs <- select(rs, date, ntstart, ntend, sunrise, sunset)
 ```
 
 
+After this, go down to the bottom tidyr and see what that was about. Lesson of the day, don't use 'attach' function to load up data frame so that it doesn't have to be referecned while working with columns... causes a world of hurt. 
+
+#figure out when it's light or dark out.  
+```{r}
+ll <- ll %>%
+  gather(event_type, date_time, exit, enter) # create event and date_time colums (converting to long format using tidyr) of leaving events
+
+ll$date_time_atl <- with_tz(ll$date_time, "America/Halifax") # force the timezone to atlantic so that we can do a bit of fan-dangling later. 
+ll$detect_time <- round(hour(ll$date_time_atl)+(minute(ll$date_time_atl)/60), digits = 2) # need this for the plots, would somebody please think of the plots? 
+ll$event_type <- factor(ll$event_type, levels = c("exit", "enter"))
+ll$station <- ifelse(ll$event_type == "exit", ll$exit_stn,
+                     ifelse(ll$event_type == "enter", ll$enter_stn, "ERROR")) ## just to maintain a feel for the original data
+
+ll$date <- format(ll$date_time_atl, "%Y-%m-%d") # need this in order to left join with the sunrise/susnet time data frame 
+ll <- ll %>% select(id, event_type, date_time_atl, station, date) %>% arrange(id, date_time_atl) # take out shit we dont need
+ll <- left_join(ll, rs, by = "date") # incorporate the required columns from NRC sun calculations
+
+ll$sun <- ifelse(ll$date_time_atl >= ll$ntstart & ll$date_time_atl <= ll$sunrise|ll$date_time_atl >= ll$sunset & ll$date_time_atl <= ll$ntend, "dusk",
+                 ifelse(ll$date_time_atl >= ll$sunrise & ll$date_time_atl <= ll$sunset, "light", "dark")) # If detection time is greater than nautical twilight (nt) start and before sunrise, or after sunset and before nt ends, it's considered dusk. If time is between sunset and sunrise, it's light out... otherwise it's dark. 
+
+```
+## maybe need to calculate the mean time it takes to swim with/against the tide to reach specific stations and incorporate them into the analysis 
 I want to produce a bunch of plots to show time of leaving events as it relates to: tide, day/night, hours before/after nautical twilight (search a good way to portray the hourly data ie how should I refeerence the 0/360 point)
 
 
+PLOTTING LIKE A MO-FO
+
+```{r}
+(p <- ggplot(ll, aes(x =detect_time, fill = sun))+  geom_histogram(breaks = seq(0,24), width = 1) + coord_polar(start = 0, direction = 1) + scale_x_continuous(breaks = seq(0,24), labels = seq(0,24)) + xlab("Time of Day (hour)") + ylab("Number of Events") + facet_grid(.~ event_type)  + scale_fill_manual(values = c("black", "dark grey", "bisque3")) + theme_bw() + theme(axis.text = element_text(size = 25), axis.title = element_text(size =25), plot.title = element_text(size = 25), strip.background = element_blank(), strip.text = element_blank(), legend.title = element_blank())
+) # exit is on the left, enter is on the right
+```
+
+produce a data summary 
+```{r}
+df <- left_and_leaving_fun(df) 
+df$year <- year(df$exit)
+
+df %>% group_by(year, event_type) %>% transmute(n = length(id),exit.mean = mean(exit), exit.sd = sd(exit), enter.mean = mean(enter), enter.sd = sd(enter), time_away.mean=mean(time_away), time_away.median = median(time_away), time_away.sd = sd(time_away), n_fish = n_distinct(id))
+```
 
 ######
 
-produce a chunk of code to filter through the detections, produce a data frame of tags that are leaving -- old way was manually go through and visually identify leaving events
-
-What is the best approach? create new data frames based on tag ids and prefrom the analysis on them? 
-```{r}
-# assume I will be working on a data frame containign and individual id. 
-# need station to be in numeric # create a stnnum column based on as numeric station column 
-# maybe use a bsb condensed data file, or mpd sturgeon day script.. 
-# to do this, I may need the arrival time and end time of fish at each station, thus sequential station information would be applicable. 
-  for(i in 1:(length(df)-1)){
-    if(df$stnnum[i] > df$stn )
-      ## dplyr to create list of new data frames based on ID's? 
-      
-  }
-}
-```
--- manually figure out when fish leave, make a table - in and out scandal
-```{r}
-in.out <- NULL
-in.out$id[1] <- 48409
-in.out$leave[1] <- "2013-09-04 01:54:47"
-in.out$entry[1] <- "2013-10-09 05:33:48"
-
-in.out$id[2] <- 48410
-in.out$leave[2] <- "2012-09-06 08:47:45" # 05:47 local. Nautical Twilight starts at 05:20; Civil Twilight 05:47; Sunrise 06:27
-in.out$entry[2] <- "2012-10-24 04:29:54"
-
-in.out$id[3] <- 48410
-in.out$leave[3] <- "2013-08-02 02:19:07"
-in.out$entry[3] <- "2013-10-07 07:35:31"
-
-in.out$id[4] <- 48410
-in.out$leave[4] <- "2014-07-27 04:42:36"
-in.out$entry[4] <- "2014-09-09 06:38:27"
-
-in.out$id[5] <- 48411
-in.out$leave[5] <- "2013-08-29 23:59:23" # detected at station 5
-in.out$entry[5] <- "2013-10-07 07:15:13" # returned to station 2 then # 7
-
-in.out$id[6] <- 33158
-in.out$leave[6] <- "2013-08-18 02:16:48" # 2
-in.out$entry[6] <- "2013-10-03 05:17:30" # 2
-
-in.out$id[7] <- 33158
-in.out$leave[7] <- "2014-07-27 04:01:38" #1
-in.out$entry[7] <- "2014-08-30 04:03:51" #1
-
-in.out$id[8] <- 5729
-in.out$leave[8] <- "2013-08-26 23:54:01" #2
-in.out$entry[8] <- "2013-10-07 07:30:27" #2
-
-in.out$id[9] <- 5736 ## caught and released on 2013-08-29T04:38:00
-in.out$leave[9] <- "2013-09-27 23:29:33" #2 ### delayed exit could be due to tagging effect
-in.out$entry[9] <- "2013-10-14 01:46:18" #2
-
-in.out$leave <- ymd_hms(in.out$leave)
-in.out$entry <- ymd_hms(in.out$entry)
-in.out$duration <- round(as.period(new_interval(in.out$leave, in.out$entry), "seconds")/(3600*24), digits = 2)
-in.out$year <- year(in.out$leave)
-in.out <- data.frame(in.out)
-
-in.out.summary<- ddply(in.out, .(year), summarise, 
-      n = length(unique(id)),
-      mean_date_leave = mean(leave),
-      mean_date_return = mean(entry),
-      mean_duration = mean(duration),
-      sd = sd(duration))
-in.out.summary$sd_leave[1] <- sd(in.out$leave[in.out$year == 2012])/(3600*24)
-in.out.summary$sd_leave[2] <- sd(in.out$leave[in.out$year == 2013])/(3600*24)
-in.out.summary$sd_leave[3] <- sd(in.out$leave[in.out$year == 2014])/(3600*24)
-
-in.out.summary$sd_entry[1] <- sd(in.out$entry[in.out$year == 2012])/(3600*24)
-in.out.summary$sd_entry[2] <- sd(in.out$entry[in.out$year == 2013])/(3600*24)
-in.out.summary$sd_entry[3] <- sd(in.out$entry[in.out$year == 2014])/(3600*24)
-
-#year n     mean_date_leave    mean_date_return mean_duration        sd    sd_leave    sd_entry
-#1 2012 1 2012-09-06 08:47:45 2012-10-24 04:29:54        47.820        NA          NA          NA
-#2 2013 6 2013-08-28 12:58:56 2013-10-08 01:49:47        40.535 16.267704 18.87939290 18.87939290
-#3 2014 2 2014-07-27 04:22:07 2014-09-04 05:21:09        39.040  7.127636  0.02011653  0.02011653
-```
-
--- circular plot of fish leave time. 
-```{r}
-in.out$leave.utc <- hour(in.out$leave)
-in.out$enter.utc <- hour(in.out$entry)
-in.out$leave.adt <- c(22, 5, 23, 1, 20, 23, 1, 20, 20)
-in.out$enter.adt <- c(2, 1, 4, 3, 4, 2, 1, 4, 22)
-
-### is it dark at time of entry/exit -- day, dark, nautical twilight -- nautical twilight used because astronomical twilight will be hampered by the anthropogenic lights; (plus it's the max twilight you can use )
-
-#http://www4.rncan.gc.ca/search-place-names/unique/CAZVS
-#http://www.nrc-cnrc.gc.ca/eng/services/sunrise/advanced.html
 
 
-in.out$leave.sun <- c("Dark", "Twilight", "Dark", "Dark", "Dark", "Dark","Dark", "Dark","Dark")
-in.out$enter.sun <- c("Dark", "Dark", "Dark","Dark","Dark","Dark","Dark","Dark","Dark")
 
-p1 <- ggplot(in.out, aes(x = leave.adt, fill = leave.sun)) + geom_histogram(breaks = seq(0,24), width = 1) + coord_polar(start = 0, direction = 1) + scale_x_continuous(breaks = seq(0,24), labels = seq(0,24)) + xlab("Departure Time (AST)") + ggtitle("Departure Time") + theme(axis.text = element_text(size = 30), axis.title = element_text(size =30), plot.title = element_text(size = 30)) +
-  scale_fill_manual(values = c("black", " dark grey")) + theme_bw()
-p1 
 
-p2 <- ggplot(in.out, aes(x = enter.adt))+  geom_histogram(breaks = seq(0,24), width = 1) + coord_polar(start = 0, direction = 1) + scale_x_continuous(breaks = seq(0,24), labels = seq(0,24)) + xlab("Return Time(AST)") + theme(legend.position = "none") + theme(axis.text = element_text(size = 30), axis.title = element_text(size =30), plot.title = element_text(size = 30)) +
-  scale_fill_manual(values = c("black", "dark grey")) + theme_bw()
-p2
- ### the above iwll work better in ggplot if I tidy up the df
-
-```
-
-TIDY UP IN.OUT df
-
-```{r}
-# this is from Tidyr
-in.out2 <- in.out[-4] %>% gather(direction, sun, 9:10)
-in.out2 <- in.out2 %>% gather(event,time, 5:8)
-in.out2 <-  in.out2[-grep(c("utc"), in.out2$event),]
-
-in.out2 <- in.out2[in.out2$direction == "leave.sun" & in.out2$event == "leave.adt"|in.out2$direction == "enter.sun" & in.out2$event == "enter.adt",]
-
-in.out2$direction <- factor(in.out2$direction, levels = c("leave.sun", "enter.sun"))
-
- ggplot(in.out2, aes(x = time, fill = sun))+  geom_histogram(breaks = seq(0,24), width = 1) + coord_polar(start = 0, direction = 1) + scale_x_continuous(breaks = seq(0,24), labels = seq(0,24)) + xlab("Time of Day (hour)") + ylab("Number of Events") + facet_grid(.~ direction)  + scale_fill_manual(values = c("black", "dark grey")) + theme_bw() + theme(axis.text = element_text(size = 25), axis.title = element_text(size =25), plot.title = element_text(size = 25), strip.background = element_blank(), strip.text = element_blank(), legend.title = element_blank())
-```
-
-```{r}
-source("functions/multiplot_fun.R")
-multiplot_fun(p1, p2, cols = 2)
-```
-
+## below is junk? 
 
 ```{r}
 ow3.10 <- read.csv("~/Desktop/Data/R/Data Files/MR_OWT3_10m.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
