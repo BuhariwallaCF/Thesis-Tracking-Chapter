@@ -7,15 +7,15 @@ otn_compressed_fun <- function(new_df){
   mrdf2013 <- read.csv("data/mrdf2013_compressed_detections_v00.csv", stringsAsFactors = F)
   mrdf2012 <- read.csv("data/mrdf2012_compressed_detections_v00.csv", stringsAsFactors = F)
   
-  df <- bind_rows(mrdf2012, mrdf2013, mrdf2014, mrdf2015)
+  df1 <- rbind(mrdf2012, mrdf2013, mrdf2014, mrdf2015)
   
   
   source("functions/dates_and_times_fun.R")
-  df <- dates_and_times_fun(df)
+  df1 <- dates_and_times_fun(df1)
   
-  df$id <- sapply(strsplit(df$startunqdetecid, split = "-"), "[",4)
+  df1$id <- sapply(strsplit(df1$startunqdetecid, split = "-"), "[",4)
   
-  new_df <- df
-  rm(mrdf2012,mrdf2013,mrdf2014,mrdf2015, df)
+  new_df <- df1
+  rm(mrdf2012,mrdf2013,mrdf2014,mrdf2015, df1)
   return(new_df) # may not even need this
 }

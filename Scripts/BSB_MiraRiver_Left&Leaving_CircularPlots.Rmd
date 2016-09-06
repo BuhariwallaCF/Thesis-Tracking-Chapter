@@ -51,13 +51,14 @@ ll$station <- ifelse(ll$event_type == "exit", ll$exit_stn,
                      ifelse(ll$event_type == "enter", ll$enter_stn, "ERROR")) ## just to maintain a feel for the original data
 
 ll$date <- format(ll$date_time_atl, "%Y-%m-%d") # need this in order to left join with the sunrise/susnet time data frame 
-ll <- ll %>% select(id, event_type, date_time_atl, station, date) %>% arrange(id, date_time_atl) # take out shit we dont need
+ll <- ll %>% select(id, event_type, date_time_atl, station, date, detect_time) %>% arrange(id, date_time_atl) # take out shit we dont need
 ll <- left_join(ll, rs, by = "date") # incorporate the required columns from NRC sun calculations
 
 ll$sun <- ifelse(ll$date_time_atl >= ll$ntstart & ll$date_time_atl <= ll$sunrise|ll$date_time_atl >= ll$sunset & ll$date_time_atl <= ll$ntend, "dusk",
                  ifelse(ll$date_time_atl >= ll$sunrise & ll$date_time_atl <= ll$sunset, "light", "dark")) # If detection time is greater than nautical twilight (nt) start and before sunrise, or after sunset and before nt ends, it's considered dusk. If time is between sunset and sunrise, it's light out... otherwise it's dark. 
 
 ```
+
 ## maybe need to calculate the mean time it takes to swim with/against the tide to reach specific stations and incorporate them into the analysis 
 I want to produce a bunch of plots to show time of leaving events as it relates to: tide, day/night, hours before/after nautical twilight (search a good way to portray the hourly data ie how should I refeerence the 0/360 point)
 
@@ -69,17 +70,41 @@ PLOTTING LIKE A MO-FO
 ) # exit is on the left, enter is on the right
 ```
 
+
+
 produce a data summary 
 ```{r}
 df <- left_and_leaving_fun(df) 
+
 df$year <- year(df$exit)
 
-df %>% group_by(year, event_type) %>% transmute(n = length(id),exit.mean = mean(exit), exit.sd = sd(exit), enter.mean = mean(enter), enter.sd = sd(enter), time_away.mean=mean(time_away), time_away.median = median(time_away), time_away.sd = sd(time_away), n_fish = n_distinct(id))
+df1 <- df %>% summarise(n = length(id),exit.mean = mean(exit), exit.sd_days = sd(exit)/(3600*24), enter.mean = mean(enter), enter.sd_days = sd(enter)/(3600*24), time_away.mean_days = mean(time_away)/(3600*24), time_away.sd_days = sd(time_away)/(3600*24), time_away_min_days = min(time_away)/(3600*24), time_away_max_days = max(time_away)/(3600*24), n_fish = n_distinct(id))
+
+df2 <- df %>% group_by(year) %>% summarise(n = length(id),exit.mean = mean(exit), exit.sd_days = sd(exit)/(3600*24), enter.mean = mean(enter), enter.sd_days = sd(enter)/(3600*24), time_away.mean_days = mean(time_away)/(3600*24), time_away.median_days = median(time_away)/(3600*24), time_away.sd_days = sd(time_away)/(3600*24), time_away_min_days = min(time_away)/(3600*24), time_away_max_days = max(time_away)/(3600*24), n_fish = n_distinct(id))
+
+View(df2)
+
+View(ll %>% group_by(id))
+View(df %>% group_by(id))
 ```
 
 ######
+Quick exploration come back to this ! 
+```{r}
+temp <- read_csv("~/Desktop/Data/R/Data Files/MR_07_2012-2015.csv")
+temp <- temp[,1:2]
+names(temp) <- c("date","tem")
+temp$date <- ymd_hms(date)
 
+int1 <- interval("2013-06-25 00:00:00", "2013-11-01 00:00:00")
+int2 <- interval("2014-06-25 00:00:00", "2014-11-01 00:00:00")
 
+tmp <- filter(temp, date %within% int1|date %within% int2)
+ll$utc <- ll$date_time_atl + hours(3)
+
+(ggplot(tmp, aes(date, tem)) + geom_line() + geom_vline(data = ll, aes(xintercept = as.numeric(utc), colour = factor(event_type))))
+
+```
 
 
 

@@ -57,6 +57,9 @@ Events that I am missing from original leave/return visual idetification:
 2014:
 33158
 
+
+
+
 AFTER the above code has been run and gone through, I need to find actual leaving and return dates. I don't know how I can isolate this? Maybe use the start and end unqdetecid, extract these detections from the original detection files, calculate the differences between subsequent detections detections (using lead and lag) and then figure out which one is leave, which one is return. apres, put leave/enter detections in a file (id, date, unqdetecid, station). as well as: time it takes to get to next station, time it takes to get to station 4, time it takes to arrive at station 7, 
 
 
