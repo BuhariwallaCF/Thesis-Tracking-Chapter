@@ -23,7 +23,7 @@ dates_and_times_fun <- function(df){
   }
   if(length(df$recov_date) >= 1){
     df$recov_date <- ymd_hms(df$recov_date, tz = "UTC")
-    df$activity_interval <- new_interval(df$depl_date, df$recov_date)
+    df$activity_interval <- interval(df$depl_date, df$recov_date)
   }
   if(length(df$ddate)>=1){
     df$ddate <- ymd(df$ddate, tz = "UTC")

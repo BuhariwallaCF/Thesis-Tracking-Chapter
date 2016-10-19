@@ -4,6 +4,8 @@ author: "Colin F. Buhariwalla"
 date: "July 13, 2016"
 output: html_document
 
+require(dplyr)
+
 ---
 ```{r}
 mr.df <- read.csv("data/mrdf.csv", stringsAsFactors = FALSE)
@@ -19,15 +21,196 @@ tag.df <- dates_and_times_fun(tag.df)
 stn.df <- dates_and_times_fun(stn.df)
 ```
 
-- format data and metadata - parse dates, set factors, create intervals 
 ```{r}
-stn.df <- stn.df[!stn.df$station %in% c(350, 200, 100, 13.5),]
+ow.stations <- c(11,12,13) # should 10 be ehre or below? # station 10 is outside the main overwintering area, more exposed to colder estuarine temperatures; the division around the small islands is the sand bars/shallows that isolates these two bodies of water... 
+outside.array <- c(1:10,14:22)
+```
+
+only want to use the necessary columns for the next bit. 
+```{r}
+mrdf <- mr.df %>% select(date,id, station, sensorvalue, receiver, id, sensorunit, ddate, day, month, year, unqdetecid)
+mrdf <- filter(mrdf, id != 48418) # this tag doesn't follow the other overwintering patterns
+rm(mr.df)
+```
+
+######## NEW WORKINGS TO MAKE THINGS PRETTY AND SMOOTH. ### TAKE OUT fish that was tagged within 30 days of OW migration? 
+
+1. Firstly, describe when fish leave Albert Bridge
+  x - i) last detection at albert in a given year
+  x - ii) last detection outside the overwintering area in a given year
+  
+
+2. When do fish Arrive in the OW area? 
+  i) are they detected in the OW area, and then move around outside? 
+      a. maybe use a roaming index to settle this out
+  x - ii) How long are they detected in the OW area before being detected outside? 
+  iii) last detection at Albert in 2012 = start of OW since no array 
+        a. figure out how long it takes for the fish to move from albert and settle into overwintering area
+        b. add a column to the table based on this estimate
+
+  iv) Describe physical Characteristics of the OW area
+
+3. How long is the overwintering period? 
+ x - i) Define what I will call the OW period
+ x   -    #a. Time first fish enters until the last fish leaves? 
+ x   -    b. Calculate it for individual fish?
+  
+4. Last Albert and then first out of OW area. this will encorporate 2012-2013 since receiver array was deployed early enough to catch the descent of fish? 
+   i) 
+   
+1) Fish Leaving Albert Bridge
+```{r}
+# i) Last Albert #### need to remove 48408 from 2014 - see page 101 in lab book for better explaination
+lab <- mrdf %>% group_by(year, id) %>% filter(station == 7, month >= 9, year < 2015, id != 48418) %>% slice(n()) # Last Albert Bridge; # slcie extracts the value/row in the nth position. So if you want the first value, you say slice(1), if you want the last value you say slice(n()) 
+lab <-  lab[-which(lab$id == 48408 & lab$year == 2014),]
+lab <- lab %>% filter(id !=5735) # filter out the 
+lab <- select(lab, id, last_albert = date, year)
+lab$event <- "Last Albert Bridge"
+
+lab_summary <- lab %>% group_by(year) %>% summarise(n = n(), mean = mean(last_albert), sd = as.numeric(sd(last_albert))/86400)
+
+#year     n                mean       sd
+#  2012    13 2012-11-24 11:29:21 3.751743
+#  2013    19 2013-11-15 12:54:13 4.129284
+#  2014    11 2014-11-18 19:08:41 4.447972
+
+# ii) Last Outside OW area  ********* ### FOR FULL EXPLAINATION OF LOGIC, SEE LAB BOOK # 3, pages 95-96/101-102
+loow <- mrdf %>% group_by(year, id) %>% filter(station %in% outside.array, year < 2015, month > 9) %>% slice(n())#month 9 is there because id 5735 fucks off in september 2013 (covered in left and leaving) and tag 5739 fucks off in may 2014
+loow$event <- "Last Outside Overwintering"
+loow <- full_join(loow,lab, by = c("id","year")) # let's include the last albert in this shizzle
+
+# keep the #48*** tags in the data. == loow avec. ## the tags below die before OW area is reached OR, as in the case of 48418, doesn't behave like the rest of the fish... 
+loowa <- loow[-which(loow$id %in% c(48408,48409.48418) & loow$year == 2014),]
+loow <- loowa
+##### remove 48408 & 48409 only; loows == loow sans  ## This would be used because the tags die several days after entereing the OW area. From here on out I will use these tags in the analysis. 
+#loows <- loow[-which(loow$id %in% c(48407:48418) & loow$year == 2014),] ## ==  loow sans
+```
+
+2) Fish showing up in the OW area
+```{r}
+#i) first overwintering ### need to define the period of overwintering - overwintering detection, which will occurr after the last outside overwintering area (LOOW)
+### i want to take the last outside OW area, match that line of the mrdf, and extract the next entry.
+####a for loop that goes through the last outside overwintering station DF and isolates the first overwintering date based on that.. 
+fowa <- NULL
+loowa <- loowa[loowa$year != 2012,]
+for(i in 1:length(loowa$date)){
+  poop <- mrdf %>% filter(id == loowa$id[i], year == loowa$year[i], date > loowa$date[i]) %>% slice(1)
+  fowa <- rbind(fowa, poop)
+  rm(poop)
+}
+anti_join(loowa, fowa, by = c("id", "year"))
+# tag id 48409
+# tag id 48408 ## these tags expired before they entered the ow area, but can be included as leaving albert bridge? check this out. 
+#48407 - tag dies on 2014-11-24 in the OW area
+#48408 - tag dies on 2014-11-21 at Albert Bridge - 
+#48409 - tag dies on 2014-11-26 at station 14 (old 12) above the Overwintering area - tag leaves albert, hits station 12 (old 11), and moves into station 11 (old 10), then hits stn 14...  
+#48410 - tag dies on 2014-11-25 in the OW area.. 
+#48411 - tag dies on 2014-11-26 in the OW area.. 
+
+#2014 tags arrival in the overwintering area
+#n = 7 - first OW (date hour/station)
+#5742 -  2014-11-20/14h/13
+#5743 -  2014-12-02/06h/12
+#33158 - 2014-11-21/19h/13
+#33159 - 2014-12-01/12h/12
+#33160 - 2014-11-24/03h/12
+#33161 - 2014-11-22/20h/13
+#33162 - 2014-11-24/01h/11
+
+##2014 48### tags arrival in the overwintering area
+#n = 3 - first OW (date hour/station)
+#48407 - 2014-11-20/01h/11
+#48410 - 2014-11-17/19h/12
+#48411 - 2014-11-10/15h/12
+
+#delete:
+#fows <- NULL
+#loows <- loows[loows$year != 2012,]
+#for(i in 1:length(loows$date)){
+#  poop <- mrdf %>% filter(id == loows$id[i], year == loows$year[i], date > loows$date[i]) %>% slice(1)
+#  fows <- rbind(fows, poop)
+#  rm(poop)
+#}
+```
+
+
+```{r}
+# first out. 
+fout <- mrdf %>% group_by(year, id) %>% filter(station %in% outside.array, month < 6) %>% slice(1) ## basically this gives me the first detection in the array outside my defined overwintering area (n = 3 stations.. see above) by year & tag; NOTE: the month less than 6 means that I will eliminate first detections from the tagging procedures.. this is a dummy/basic way of doing this, but it works
+```
+
+#### combine all events into a data file for plotting 
+```{r}
+lab_events <- select(lab, id, last_albert, year, event)
+names(lab_events) <- c("id", "date", "year", "event")
+
+lastoutside_events <- select(loow, id, date, year, event.x)
+names(lastoutside_events) <- c("id", "date", "year", "event")
+
+firstow_events <- select(fowa, id, date, year)
+firstow_events$event <- "First Overwintering"
+
+firstout_events <- select(fout, id, date, year)
+firstout_events$event <- "End Overwintering" # note: I am defining end of overwintering as the first detection on an outside receiver
+
+ow_events <- bind_rows(lab_events, lastoutside_events, firstout_events, firstow_events)
+
+write.csv(ow_events, "data/overwintering_events.csv", row.names = F)
+```
+
+CLEAN UP BELOW!!!! FIGURE OUT WHAT ITs DOING, IN WORDS... 
+
+### Experimentation zone ### ### FOR FULL EXPLAINATION OF LOGIC, SEE LAB BOOK # 3, pages 96-
+```{r}
+# I am going to bind together the last outside overwintering station (loow) with first station outside ow area (fout) to get an interval of overwintering and then subset the main data, based on those periods (why?). SHA-BAM! # Should maybe be defined as first detection on OW array to first detection on Outsided array (or last detection on ow array?). 
+fout$year_join <- fout$year - 1 
+loowa$year_join <- loowa$year # It is not necessary to do this with the sans ids 484## since they are are filtered out in the following inner join... this will result in only fish that make it through the wintering events.. 
+
+# GET the duration of each fish:   
+ow.timing <- inner_join(loowa, fout, by = c("year_join","id"))
+ow.timing$ow_duration <- ow.timing$date.y - ow.timing$date.x # days 
+
+#Summary stats on ow
+ow.length.stats <- ow.timing  %>% group_by(year_join) %>% summarise(mean_ow = mean(ow_duration), sd_ow = sd(ow_duration), mean_start = mean(date.x), sd_start = as.numeric(sd(date.x))/86400, mean_end = mean(date.y), sd_end = as.numeric(sd(date.y))/86400, mean_last_albert = mean(last_albert), sd_last_albert = as.numeric(sd(last_albert)))## SD units are all days. 
+write.csv(ow.length.stats, "Data/Tables/BSB_overwintering_stats_entirewinter_avec.csv",row.names = F)
+
+
 ```
 
 ```{r}
-ow.stations <- c(10,11,12,13) #overwintering array
-outside.array <- c(1:9,14:22)
+## repeat but for all fish including those that were not captured descending the ow area (tag expiry)
+ow.timing.all.fish <- full_join(loowa, fout, by = c("year_join","id"))
+#ow.timing.all.fish <- mutate(ow.timing.all.fish, ow_duration = ow.timing$date.y - ow.timing$date.x)
+ow.timing.all.fish$ow_duration <- ow.timing.all.fish$date.y - ow.timing.all.fish$date.x
+
+ow.timing.all.fish$ow_migration <- ow.timing.all.fish$date.x - ow.timing.all.fish$last_albert
+
+ow.length.stats.all.fish <- ow.timing.all.fish %>% group_by(year_join) %>% summarise(number_full_ow = length(na.omit(ow_duration)), mean_ow = mean(na.omit(ow_duration)), sd_ow = sd(na.omit(ow_duration)), number_start_ow = length(na.omit(date.x)),  mean_start = mean(date.x), sd_start = as.numeric(sd(date.x))/86400, min_start_date = min(date.x), max_start_date = max(date.x), number_end_ow = length(na.omit(date.y)), mean_end = mean(na.omit(date.y)), sd_end = as.numeric(sd(na.omit(date.y)))/86400, min_end_date = min(na.omit(date.y)), max_end_date = max(na.omit(date.y)), mean_last_albert = mean(na.omit(last_albert)), sd_last_albert = as.numeric(sd(last_albert))/86400, mean_migration_length = mean(ow_migration)/86400, sd_migration_length = as.numeric(sd(ow_migration))/86400, min_lab = min(last_albert), max_lab = max(last_albert))
+
+write.csv(ow.length.stats.all.fish, "Data/Tables/BSB_overwintering_stats.csv",row.names = F)
 ```
+
+### duration of ow. NOTE: dplyr was being a cunt about this.. "Error: unknown column 'date.x'"
+```{r}
+mean(ow.timing$ow_duration) # 160.2 days -- 160.19 ## now says 164.54
+sd(ow.timing$ow_duration) # 11.1 days -- 11.05 ## now says 8.64 days... wtf?
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### old stuff below here
 
 ### calculate OW exit stations and arrival at Albert Bridge ####
 ```{r}
