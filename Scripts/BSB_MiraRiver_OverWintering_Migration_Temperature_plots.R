@@ -16,11 +16,10 @@
 #Steps:
 #4) figure out how to fill in the temperature for each fish at the time of it's departure
 
-require(dplyr)
-require(tidyr)
 require(ggplot2)
 require(scales)
-
+require(dplyr)
+require(tidyr)
 #require(grid) #?
 #require(gridExtra)#?
 
@@ -97,15 +96,15 @@ daily13 <- filter(adf, winter == "2013-2014")
 daily14 <- filter(adf, winter == "2014-2015")
 
 p1 <- ggplot(data = filter(daily12, month %in% c(10:12,1:5)), aes(ddate, mtemp)) + geom_line(data = filter(daily12, month %in% c(10:12,1:5))) + geom_line(data = filter(daily12, month %in% c(4,5))) +
-  geom_point(data = filter(daily12, event %nin% c("hobo", "Last Outside Overwintering")),aes(shape = event, size = 5)) + scale_shape_manual(values=c(20,3)) + theme_bw() + xlab("")+ ylab("") +
+  geom_point(data = filter(daily12, event %nin% c("hobo", "Last Outside Overwintering")),aes(shape = event, size = 5), position = "jitter") + scale_shape_manual(values=c(20,3)) + theme_bw() + xlab("")+ ylab("") +
   theme(legend.position = "none", axis.text.x = element_blank()) + scale_x_date(breaks = pretty_breaks(8),limits = c(ymd("2012-10-01"), ymd("2013-05-31"))) + guides(size = F) 
 
 p2 <- ggplot(data = filter(daily13, month %in% c(10:12,4,5)), aes(ddate, mtemp)) + geom_line(data = filter(daily13, month %in% c(10:12,1:5))) + geom_line(data = filter(daily13, month %in% c(4,5))) +
-  geom_point(data = filter(daily13, event %nin% c("hobo", "Last Outside Overwintering")),aes(shape = event, size = 5)) + scale_shape_manual(values=c(20, 8, 3)) + theme_bw() + ylab("Mean Daily Temperature (°C)") + xlab("") +
+  geom_point(data = filter(daily13, event %nin% c("hobo", "Last Outside Overwintering")),aes(shape = event, size = 5), position = "jitter") + scale_shape_manual(values=c(20, 8, 3)) + theme_bw() + ylab("Mean Daily Temperature (°C)") + xlab("") +
   theme(legend.position = c(0.5, 0.7), legend.direction = "horizontal", legend.title = element_blank() , axis.text.x = element_blank()) + scale_x_date(breaks = pretty_breaks(8),limits = c(ymd("2013-10-01"), ymd("2014-05-31"))) + guides(size = F)
 
 p3 <- ggplot(data = filter(daily14, month %in% c(10:12,4,5)), aes(ddate, mtemp)) + geom_line(data = filter(daily14, month %in% c(10:12,1:5))) + geom_line(data = filter(daily14, month %in% c(4,5))) +
-  geom_point(data = filter(daily14, event %nin% c("hobo", "Last Outside Overwintering")),aes(shape = event, size = 5)) + scale_shape_manual(values=c(20, 8, 3)) + theme_bw() + xlab("Date") + ylab("") +
+  geom_point(data = filter(daily14, event %nin% c("hobo", "Last Outside Overwintering")),aes(shape = event, size = 5), position = "jitter") + scale_shape_manual(values=c(20, 8, 3)) + theme_bw() + xlab("Date") + ylab("") +
   theme(legend.position = "none", legend.title = element_blank()) + scale_x_date(breaks = pretty_breaks(8),labels = date_format("%B"), limits = c(ymd("2014-10-01"), ymd("2015-05-31"))) + guides(size = F)
 
 multiplot_fun(p1, p2, p3)
@@ -142,19 +141,3 @@ t <- dates_and_times_fun(t)
 t <- arrange(t, date)
 tdf <- arrange(tdf, date)
 
-# now remove the period of time in tdf that is missing from t
-t$ddate <- ymd(substr(t$date, 1, 10))
-tdf$ddate <- ymd(substr(tdf$date, 1, 10))
-
-trash <- tdf$ddate[tdf$ddate %nin% t$ddate] # the ddates that aren't in t file IE data from the missing logger
-min(trash)
-max(trash)
-
-t$temp <- as.numeric(t$temp)
-tdf$temp <- as.numeric(tdf$temp)
-
-t2 <- tdf %>% filter(ddate %nin% trash) # so we want all ddates that aren't in the trash 
-t3 <- tdf %>% filter(ddate %nin% trash) %>% mutate(date = date + hours(3)) ## we want the same ddates, but add three hours
-
-poop1 <- anti_join(t, t2, by = c("date", "temp"))
-poop2 <- anti_join(t, t3, by = c("date", "temp")) ## winner winner, chicken dinner.  # page 104 in lab book 
