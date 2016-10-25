@@ -14,16 +14,21 @@
 # 1) What temperature to use (mean daily?, min, max)
 
 #Steps:
-# 1) Use my OWmigration file to produce the required information
-# 2) Export this into a saved data file 
-# 3) read in my water temperature file - ensure that it is cleaned up.
-# 4) figure out how to fill in the temperature for each fish at the time of it's departure
+#4) figure out how to fill in the temperature for each fish at the time of it's departure
 
 require(dplyr)
+require(tidyr)
+require(ggplot2)
+require(scales)
+
+#require(grid) #?
+#require(gridExtra)#?
+
+"%nin%" <- Negate("%in%")
 ####
 
 # temp df 
-tdf <- read.csv("raw data/MR_07_2012-2015_temp.csv", colClasses = "character")
+tdf <- read.csv("data/MR07t_2012-2015_UTC_temperature.csv", colClasses = "character")
 names(tdf) <- c("date", "temp")
 tdf$event <- "hobo"
 tdf$station <- "007"
@@ -37,8 +42,9 @@ stn.df <- read.csv("data/stndf.csv", stringsAsFactors = F)
 #get some posix on the go
 source("functions/dates_and_times_fun.R")
 tdf <- dates_and_times_fun(tdf)
+tdf <- mutate(tdf, date = date + hours(3)) ### ATTENTION: this needs to happen with the combined hobo file from above since UTC correction wasn't applied
 edf <- dates_and_times_fun(edf)
-#tdf <- dates_and_times_fun(tdf)
+#edf$ddate <- ymd(substr(edf$date, 1, 10))
 
 # recovery/deploy metadata 
 rdf <- read.csv("raw data/bsb_metadata_recovery_2012-2015_update20160829.csv", colClasses = "character")
@@ -55,34 +61,100 @@ names(ddf) <- c("station", "deploy_no", "serial_no", "depl_date", "lat", "long",
 
 stndf <- full_join(ddf, rdf, by = c("station", "deploy_no", "serial_no"))
 stndf <- stndf[1:106,] # the blank rows that excel always has in it get imported, need to delete. 
-
-source("functions/dates_and_times_fun.R")
 stndf <- dates_and_times_fun(stndf)
 
+source("functions/hobo_cleanup_fun.R") # to see how this works, see "hobo_cleanup_fun.R"/ page 102 of Lab book
+df <- hobo_cleanup_fun(tdf, stndf, "007")
+df$temp <- as.numeric(df$temp)
+### now there are also some problems where a logger was removed without being redeployed with the station (for rebatterying)
+df <- df[!df$date %within% interval("2013-04-24 23:00:00", "2013-05-03 21:00:00") & !df$date %within% interval("2014-05-03 16:30:00", "2014-05-03 17:00:00"),]
+#df <- df %>% mutate(year = year(date), month = month(date), ddate = ymd(substr(df$date, 1, 10)))
+#df$winter <- ifelse(df$month > 6, paste(df$year, df$year+1, sep="-"), paste(df$year-1,df$year, sep="-"))
 
-########## heavy hitting construction zone ######
+#### feel the construction love ####
+# idea: join the events df with df and then use the closest temp value to insert into the dataframe (lead for next possible temp event)
+
+adf <- union_all(df, edf)
+adf$temp <- as.numeric(adf$temp)
+adf <- adf %>% arrange(date)
+adf <- adf %>% fill(temp)
+
+# add a winter/year/months/ddate column to data
+adf <- adf %>% mutate(year = year(date), month = month(date), ddate = ymd(substr(adf$date, 1, 10)))
+adf$winter <- ifelse(adf$month > 6, paste(adf$year, adf$year+1, sep="-"), paste(adf$year-1,adf$year, sep="-"))
+adf <- adf %>% group_by(ddate) %>% mutate(mtemp = mean(temp))
+adf$event <- factor(adf$event, levels = c("Last Albert Bridge", "Last Outside Overwintering", "First Overwintering","End Overwintering", "hobo")) 
+
+# doesn't produce much fun. 
+ggplot(adf, aes(y= temp)) + geom_line(data = adf[adf$month %in% c(10:12,1:5),], aes(x = date)) + 
+  geom_point(data = adf[adf$event != "hobo",], aes(x = date, shape = event, size = 5, colour = event)) + 
+  facet_grid(winter~., scales="free_x")
 
 
-hobo_cleanup_fun <- function(temp_data, stn_metadata, station_of_interest){ # we input: hobo temp file cleaned up above; station metadata; and the station number we want to work with (character) e.g. "007" 
-  {
-stn <- stn_metadata %>% filter(station == station_of_interest) # isolate only the metadata we want
-stn_recovered <- stn %>% transmute(recovered_int = interval(lag(recov_date,1),depl_date))# create an interval of the time hobo was out of the water between deployments; basically, recovery date 1 - deploy date 2; NOTE: row 1 WILL == NA!!!!
-temperature.df <- temp_data %>% filter(date < stn$recov_date[length(stn$recov_date)] & date > stn$depl_date[1])# Remove data points before (depl_date 1) and after (last recov_date) study window -  
+#### PLOT: Mean Daily Temperature (°C) vs Date of EVENTs (last albert, first ow, first outside) ####
+daily12 <- filter(adf, winter == "2012-2013")
+daily13 <- filter(adf, winter == "2013-2014")
+daily14 <- filter(adf, winter == "2014-2015")
 
-### now let's skip some rope and jump into a loop... here we gooooooo 
-deletion.bin.df <- NULL # space holder
-for(i in 2:length(stn_recovered$recovered_int)){ # need to start at 2 due to the NA at stn_recovered$recovered_int[1] 
-  temp <- temperature.df[temperature.df$date %within% stn_recovered$recovered_int[i],] # are there dates that fall within the recovered intervals? 
-  deletion.bin.df <- rbind(deletion.bin.df, temp) # bind that shit together
+p1 <- ggplot(data = filter(daily12, month %in% c(10:12,1:5)), aes(ddate, mtemp)) + geom_line(data = filter(daily12, month %in% c(10:12,1:5))) + geom_line(data = filter(daily12, month %in% c(4,5))) +
+  geom_point(data = filter(daily12, event %nin% c("hobo", "Last Outside Overwintering")),aes(shape = event, size = 5)) + scale_shape_manual(values=c(20,3)) + theme_bw() + xlab("")+ ylab("") +
+  theme(legend.position = "none", axis.text.x = element_blank()) + scale_x_date(breaks = pretty_breaks(8),limits = c(ymd("2012-10-01"), ymd("2013-05-31"))) + guides(size = F) 
+
+p2 <- ggplot(data = filter(daily13, month %in% c(10:12,4,5)), aes(ddate, mtemp)) + geom_line(data = filter(daily13, month %in% c(10:12,1:5))) + geom_line(data = filter(daily13, month %in% c(4,5))) +
+  geom_point(data = filter(daily13, event %nin% c("hobo", "Last Outside Overwintering")),aes(shape = event, size = 5)) + scale_shape_manual(values=c(20, 8, 3)) + theme_bw() + ylab("Mean Daily Temperature (°C)") + xlab("") +
+  theme(legend.position = c(0.5, 0.7), legend.direction = "horizontal", legend.title = element_blank() , axis.text.x = element_blank()) + scale_x_date(breaks = pretty_breaks(8),limits = c(ymd("2013-10-01"), ymd("2014-05-31"))) + guides(size = F)
+
+p3 <- ggplot(data = filter(daily14, month %in% c(10:12,4,5)), aes(ddate, mtemp)) + geom_line(data = filter(daily14, month %in% c(10:12,1:5))) + geom_line(data = filter(daily14, month %in% c(4,5))) +
+  geom_point(data = filter(daily14, event %nin% c("hobo", "Last Outside Overwintering")),aes(shape = event, size = 5)) + scale_shape_manual(values=c(20, 8, 3)) + theme_bw() + xlab("Date") + ylab("") +
+  theme(legend.position = "none", legend.title = element_blank()) + scale_x_date(breaks = pretty_breaks(8),labels = date_format("%B"), limits = c(ymd("2014-10-01"), ymd("2015-05-31"))) + guides(size = F)
+
+multiplot_fun(p1, p2, p3)
+
+source("functions/multiplot_fun.R")
+multiplot_fun(p1, p2, p3)
+
+
+
+##### Figuring out discrepancies in the hobo temp files #####
+
+multiple_files_fun <- function(file.path.string, common.string.in.file.name){
+  
+  files <- dir(file.path.string, full.name = TRUE)
+  det.I <- files[grep(common.string.in.file.name, files)]
+  det.II <- lapply(det.I, "read.csv", header = TRUE, stringsAsFactors = FALSE, dec = ".") ## will delete the header
+  output <- do.call("rbind", det.II) ## combine all csv files into one df
+  
+  return(output)
+  
+  rm(det.I, det.II, files)
+  
 }
-  }
-  clean_temp <- anti_join(temperature.df, deletion.bin.df, by = "date") # get rid of the terrible, awful, just monsterous detections from the orginal data file and call it something new and shiny/pretty... I am tired. 
- # remove(deletion.bin.df)
-  return(clean_temp)
-}
 
+# can delete below when done 
+# need to see what the fuck is going on with the hobo temp files. need to keep tdf
+source("functions/multiple_csv_import_bind_fun.R")
+t <- multiple_csv_import_bind_fun("raw data/", "MR07t") ### NOTE HOBO TEMP FILES NEED TO BE CLEANED UP IN EXCEL.
 
+names(t) <- c("date", "temp")
+source("functions/dates_and_times_fun.R")
+t <- dates_and_times_fun(t)
 
+t <- arrange(t, date)
+tdf <- arrange(tdf, date)
 
-trash <- hobo_cleanup_fun(tdf, stndf, "007") #YESSSSS IT WORKKKSSSS !!!!!!!!!!! I CAN FINALLY SLEEEEPPPP!!!!
+# now remove the period of time in tdf that is missing from t
+t$ddate <- ymd(substr(t$date, 1, 10))
+tdf$ddate <- ymd(substr(tdf$date, 1, 10))
 
+trash <- tdf$ddate[tdf$ddate %nin% t$ddate] # the ddates that aren't in t file IE data from the missing logger
+min(trash)
+max(trash)
+
+t$temp <- as.numeric(t$temp)
+tdf$temp <- as.numeric(tdf$temp)
+
+t2 <- tdf %>% filter(ddate %nin% trash) # so we want all ddates that aren't in the trash 
+t3 <- tdf %>% filter(ddate %nin% trash) %>% mutate(date = date + hours(3)) ## we want the same ddates, but add three hours
+
+poop1 <- anti_join(t, t2, by = c("date", "temp"))
+poop2 <- anti_join(t, t3, by = c("date", "temp")) ## winner winner, chicken dinner.  # page 104 in lab book 
