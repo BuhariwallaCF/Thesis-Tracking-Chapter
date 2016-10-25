@@ -1,0 +1,1042 @@
+---
+title: "MiraRiver_Acoustics_2015-06-29"
+author: "Colin F. Buhariwalla"
+date: "June 29, 2015"
+output: html_document
+---
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+require(lubridate)
+require(ggplot2)
+require(scales)
+require(doBy)
+require(plyr)
+require(dplyr)
+require(jpeg)
+require(reshape2)
+
+
+
+####read in file and clean it up####
+```{r}
+df <- read.csv("~/Desktop/Data/R/Data Files/MIRA_RIVER_ALL_YEARS_TIME&STATION_CORRECTED.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+df <- df[-c(4,5,9,10)]
+
+
+names(df) <-c("date","vr2","tag", "depth", "unit", "station")
+df$id <- as.factor(unlist(strsplit(df$tag, split = "-"))[3*(1:length(df$tag))]) 
+df$receiver <- as.character(unlist(strsplit(df$receiver, split = "-"))[2*(1:length(df$receiver))])
+
+df$ddate <- ymd(substr(df$date, 1, 10))
+df$date <- ymd_hms(df$date, tz = "UTC")
+df$day <- day(df$date)
+df$month <- month(df$date)
+df$year <- year(df$date)
+
+df$depth <- 0.43970*df$depth-1.7587 #need to set to 1 decimal place? 
+df$unit <- "m"
+
+# make sure that the tag md df is not screwed up by excel formatting going to the csv (creating blank spaces causing 'NA's)
+tags.df <- read.csv("~/Desktop/Data/R/Data Files/BSB_tagging.csv", stringsAsFactors = FALSE, skip = 4, header = TRUE, sep = ",", dec = "." )
+tags.df<- tags.df[1:length(tags.df[grep("VEMCO",tags.df$TAG_MANUFACTURER)]),] ## remove the NA's introduced during the import
+
+# set up date and time within the tags.df dataframe
+tags.df$date <- gsub("T", " ", tags.df$UTC_RELEASE_DATE_TIME,) # this allows you to convert date/time md to posix
+tags.df$ddate <-  ymd(substr(tags.df$date, 1, 10))
+tags.df$date <- ymd_hms(tags.df$date, tz = "UTC")
+#tags.df <- tags.df[,-c(33:65)]
+tags.df$id <- as.factor(tags.df$TAG_ID_CODE) ## need to do this to keep str() same across dfs ## EDIT: CHANGED TO FACTOR ABOVE.. SEE HOW IT WORKS
+tags.df <- tags.df[!tags.df$CAPTURE_LOCATION == "FULLER'S BRIDGE",]
+
+#colin's code to filter out other tag id's that are not deployed by me 
+# subset the det det based on my tag id's ## eliminated 2144 detections
+tag.id <- as.list(as.character(na.omit(tags.df$TAG_ID_CODE)))
+df <- df[df$id %in% tag.id,] 
+
+
+#### Clean up dataframes ####
+df <- arrange(df, date)
+df <- distinct(df) # remove any duplicates 
+
+unique(df$station)
+#[1] "005"              "03"               "009"              "015"              "006"              "007"              "12"               "04"               "08"               "07"              
+#[11] "02"               "01"               "06"               "14"               "09"               "11"               "16"               "13"               "13.5"             "20"              
+#[21] "21"               "05"               "Range Test 100 m" "Range Test 200m"  "Range Test 300m"  "013"              "15"               "001"              "17"               "18"              
+#[31] "19"               "10"               "0011"             "014"              "011"             
+
+
+### Clean up stations -- Colin's script ####
+df$station <- ifelse(df$station == "01"| df$station =="001", "1",
+                         ifelse(df$station == "02"| df$station =="002", "2",
+                                ifelse(df$station == "03"| df$station =="003", "3",
+                                       ifelse(df$station == "04"| df$station =="004", "4",
+                                              ifelse(df$station == "05"| df$station =="005", "5",
+                                                     ifelse(df$station == "06"| df$station =="006", "6",
+                                                            ifelse(df$station == "07"| df$station =="007", "7",
+                                                                   ifelse(df$station == "08"| df$station =="008", "8",
+                                                                          ifelse(df$station == "09"| df$station =="009", "9",
+                                                                                 ifelse(df$station == "10"| df$station =="010", "10",
+                                                                                        ifelse(df$station == "11"| df$station =="011"| df$station =="0011", "11",
+                                                                                               ifelse(df$station == "12"| df$station =="012", "12",
+                                                                                                      ifelse(df$station == "13"| df$station =="013", "13",
+                                                                                                             ifelse(df$station == "14"| df$station =="014", "14",
+                                                                                                                    ifelse(df$station == "15"| df$station =="015", "15",
+                                                                                                                           ifelse(df$station == "16"| df$station =="016", "16",
+                                                                                                                                  ifelse(df$station == "17"| df$station =="017", "17",
+                                                                                                                                         ifelse(df$station == "18"| df$station =="018", "18",
+                                                                                                                                                ifelse(df$station == "19"| df$station =="019", "19",
+                                                                                                                                                       ifelse(df$station == "20"| df$station =="020", "20",
+                                                                                                                                                              ifelse(df$station == "21"| df$station =="021", "21", "ERROR" ))))))))))))))))))))) 
+## When I want to incorporate MR_13.5 in analysis, I can replace Error with df$station
+                                                                                                                    
+
+
+df <- df[!df$station == "NA",]
+df <- df[!df$station == "ERROR",] ### Tag id 33162  was used for a range test and this escaped above filtering
+df$station <- as.numeric(df$station)
+
+df.backup <- df
+
+ow.stations <- c(10,11,12,13) #overwintering array
+outside.array <- c(1:9,14:21)
+
+remove.tags.df <- NULL
+for(i in tag.df$id){
+  temp <- df[mr.df$id == i & df$date < tag.df$depl_date[tag.df$id == i],]  
+  len <- length(temp$date)
+  temp$tagdate <- rep(tag.df$depl_date[tag.df$id == i], times = len)
+  remove.tags.df <- rbind(remove.tags.df, temp)
+}
+
+df <- anti_join(df, remove.tags.df, by = c("date", "id")) ### this is a beautiful little piece of code right here... always remember "In Hadley We Trust"
+
+df <- anti_join(df, trash, by = c("date", "id"))
+
+df <- arrange(df, date, id)
+
+
+```
+- need to use these data to define end of OW period for IR 
+
+### calculate OW exit stations and arrival at Albert Bridge ####
+```{r}
+leave.fun <- function(data, year, fish){ ## will work on data after 2013 since OW arrays were deployed thenceforth 
+  
+  first.det.out <- head(data[data$year == year & data$id == fish & data$station %in% outside.array,],1) ## first detection in outside array
+  first.det.out$first.albert <- head(data$date[data$year == year & data$id == fish & data$station == 7],1) ## first albert bridge detection
+  last.ow.det <- tail(data[data$year == year & data$id == fish & data$date < first.det.out$date,],1) ## last detection in the OverWintering area 
+  end.ow <- merge(last.ow.det, first.det.out, by="id") # merge the two (long format, maybe want to make it short format)
+  
+  return(end.ow)
+  }
+  
+leave.master=NULL
+  for (i in unique(df$id)){
+    for(j in unique(df$year[df$year >= 2014])){
+  output=leave.fun(df,j,i)
+  leave.master=rbind(leave.master, output)
+}}
+
+leave.fun.2013 <- function(data, fish){ # a lot of unnecessary code here, but it could be decent 
+
+    first.det.out <- head(data[data$year == 2013 & data$month < 6 & data$id == fish & data$station == 7,],1)
+    last.ow.det <- head(data[data$year == 2013 & data$month < 6 & data$id == fish & data$station %in% outside.array,],1)
+    end.ow <- merge(last.ow.det, first.det.out, by ="id")
+    
+return(end.ow)
+}
+
+leave.master.2013 = NULL
+for(i in unique(df$id[df$year == 2013 & df$month <= 6])){
+  output = leave.fun.2013(df,i)
+  leave.master.2013 = rbind(leave.master.2013, output)
+}
+
+leave.master.2013$first.albert <- leave.master.2013$ddate.y ### for some reason when I tried to include a first albert column in leave.fun.2013 I got an error "replacement has 1 row, data has 0"... wtf? 
+
+leave.df <- rbind(leave.master, leave.master.2013)
+
+#leave.df <- leave.df[-c(4:6, 8:11,14:16,18:20)]
+leave.df <- leave.df[c(1,2,3,7,12,13,17,21,22)]
+
+names(leave.df) <- c("id", "last_ow_date", "vr2_ow", "last_ow_stn", "first_out_date", "vr2_out", "first_out_stn", "year", "first_albert")
+
+leave.df <- leave.df[!leave.df$id == 48418,]
+leave.df <- arrange(leave.df, year, id)
+
+leave.df$winter <- ifelse(leave.df$year == 2013, "2012-2013", ## create a winter category so we can figure out how to match up with entry data 
+                          ifelse(leave.df$year == 2014, "2013-2014",
+                                 ifelse(leave.df$year == 2015, "2014-2015", "ERROR")))
+
+```
+
+
+### calculate entrance to OW area and when they've left albert Bridge
+```{r}
+enter.fun <- function(data, year, fish){
+  
+  if(year == 2012){
+  last.detection.out <- tail(data[data$year == 2012 & data$id == fish & data$station %in% outside.array,], 1)
+  first.detection.in <- tail(data[data$year == 2012 & data$id == fish & data$station %in% outside.array,], 1)
+  last.albert <- tail(data[data$year == 2012 & data$id == fish & data$station == 7, c(7,1)], 1)
+  names(last.albert) <- c("id", "last_albert")
+  } else{
+    last.detection.out <- tail(data[data$year == year & data$id == fish & data$station %in% outside.array,], 1)
+    first.detection.in <- head(data[data$year == year & data$id == fish & data$date > last.detection.out$date & data$station %in% ow.stations,], 1)
+    last.albert <- tail(data[data$year == year & data$id == fish & data$station == 7, c(7,1)], 1)
+    names(last.albert) <- c("id", "last_albert") 
+  }
+
+  start.ow <- merge(last.detection.out, first.detection.in, by = "id")
+  start.ow <- merge(start.ow, last.albert, by = "id")
+  
+return(start.ow)
+       }
+
+enter.df <- NULL 
+for(i in unique(df$id)){ ### this takes 1 min 45 seconds on my (CBU) computer
+  for(j in unique(df$year)){
+    output = enter.fun(df, j, i)
+    enter.df <- rbind(enter.df, output)
+  }
+}
+
+
+enter.df <- enter.df[c(1,2,3,7,12,13,17,21,22)] ## change out 2 & 12 for 8 and 18
+names(enter.df) <- c("id", "out_date", "out_vr2", "out_station", "ow_date", "ow_vr2", "ow_station", "year", "last_albert")
+enter.df$winter <- ifelse(enter.df$year == 2012, "2012-2013",
+                          ifelse(enter.df$year == 2013, "2013-2014",
+                                 ifelse(enter.df$year == 2014, "2014-2015", "ERROR"))) 
+
+enter.df <-enter.df %>% ## for some reason the enter.fun produces duplicates likely to do with the if statement 
+              arrange(year, id) %>%
+              distinct()
+```
+
+#### Figure out how long fish were overwintering for #### - will define as from first detection in the OW area to the last detection in the ow area 
+```{r}
+ow.df <- merge(enter.df, leave.df, by = c("id","winter")) ## only 22 records for this 
+ow.df <- arrange(ow.df, winter)
+ow.df$ow_duration <- day(as.period(new_interval(ow.df$ow_date, ow.df$last_ow_date), "days"))
+ow.df$mig_duration <- as.period(new_interval(ow.df$last_albert, ow.df$ow_date))
+ow.summary <- ddply(ow.df, .(id, winter), summarise, 
+                    last.albert = last_albert,
+                    start.ow = ow_date,
+                    end.ow = last_ow_date,
+                    ow.duration = ow_duration,
+                    last.out = out_station,
+                    first.ow = ow_station,
+                    last.ow = last_ow_stn,
+                    first.out = first_out_stn)
+```
+
+#### figure out how long fish took to migrate upriver
+```{r}
+enter.df$mig_duration <- as.duration(new_interval(enter.df$last_albert, enter.df$ow_date)) 
+
+## need to convert all to hours or days from duration
+## NOTE **** CAN'T USE 2012 MIGRATION TIMES AS WE HAVE NO OW ARRAY WITHIN THE SYSTEM
+
+mig.dur <- ddply(enter.df, .(winter), summarise, 
+            n = length(unique(id)),
+            mean_mig_dur = mean(mig_duration)/(60*60*24),## days
+            sd_mig_dur = sd(mig_duration)/(60*60*24)) ## days
+
+#MIGRATION HOURS
+#   winter  n mean_mig_dur sd_mig_dur
+#1 2012-2013 14     77.23222  230.73869
+#2 2013-2014 19     77.20889  124.97298
+#3 2014-2015 10     30.32306   25.61724
+
+#MIGRATION DAYS
+#   winter  n mean_mig_dur sd_mig_dur
+#1 2012-2013 14     3.218009   9.614112
+#2 2013-2014 19     3.217037   5.207207
+#3 2014-2015 10     1.263461   1.067385
+
+```
+
+### defining periods for IR 
+```{r}
+ddply(leave.df, .(year), summarize, end.ow = median(last_ow_date))
+ddply(enter.df, .(year), summarise, 
+      n = length(unique(id)),
+      start.ow = mean.Date(ow_date),
+      sd.start.ow = sd(ow_date))
+
+entry.summary <- enter.df %>%
+                  group_by(year) %>%
+                   summarise(
+                    n = length(unique(id)),
+                    start_ow = mean(ow_date),
+                    last_albert = mean(last_albert))
+
+entry.summary$ow_sd[1] <- sd(enter.df$ow_date[enter.df$year == 2012])/(3600*24)# need to do this because dplyr/plyr can't handle converting SD to numbers... returns a date 
+entry.summary$ow_sd[2] <- sd(enter.df$ow_date[enter.df$year == 2013])/(3600*24)
+entry.summary$ow_sd[3] <- sd(enter.df$ow_date[enter.df$year == 2014])/(3600*24)
+
+entry.summary$last_albert_sd[1] <- sd(enter.df$last_albert[enter.df$year == 2012])/(3600*24)# need to do this because dplyr/plyr can't handle converting SD to numbers... returns a date 
+entry.summary$last_albert_sd[2] <- sd(enter.df$last_albert[enter.df$year == 2013])/(3600*24)
+entry.summary$last_albert_sd[3] <- sd(enter.df$last_albert[enter.df$year == 2014])/(3600*24)
+
+#year  n            start_ow         last_albert     ow_sd last_albert_sd
+#1 2012 14 2012-11-27 18:23:57 2012-11-23 22:17:08 10.341941       3.730628
+#2 2013 19 2013-11-18 18:06:45 2013-11-15 00:00:00  5.525523       4.242641
+#3 2014 10 2014-11-19 18:53:34 2014-11-18 00:00:00  4.804197       4.737557
+
+leave.df$descent_time_H <- difftime(leave.df$first_out_date, leave.df$last_ow_date, units = "hours")
+leave.df$descent_time_D <- difftime(leave.df$first_out_date, leave.df$last_ow_date, units = "days")
+
+  leave.summary <- leave.df[!leave.df$id == 48418,] %>%
+                  group_by(year) %>%
+                   summarise(
+                    n = length(unique(id)),
+                    end_ow = mean(last_ow_date))
+
+leave.summary$last_sd[1] <- sd(leave.df$last_ow_date[leave.df$year == 2013])/(3600*24)
+leave.summary$last_sd[2] <- sd(leave.df$last_ow_date[leave.df$year == 2014])/(3600*24)
+leave.summary$last_sd[3] <- sd(leave.df$last_ow_date[leave.df$year == 2015])/(3600*24)
+
+ow.summary[!ow.summary$id == 48418,] %>%
+  group_by(winter)%>%
+  summarise(
+    n = length(unique(id)),
+    mean_duration = mean(duration),
+    sd_duration = sd(duration))
+
+#year  n              end_ow  last_sd
+#1 2013  5 2013-04-20 07:20:32 3.528795
+#2 2014 11 2014-04-29 10:40:56 5.565831
+#3 2015  5 2015-05-08 21:06:06 3.135987
+
+#year  n            start_ow         last_albert     ow_sd last_albert_sd
+#1 2012 14 2012-11-27 18:23:57 2012-11-23 22:17:08 10.341941       3.730628
+#2 2013 19 2013-11-18 18:06:45 2013-11-15 00:00:00  5.525523       4.242641
+#3 2014 10 2014-11-19 18:53:34 2014-11-18 00:00:00  4.804197       4.737557
+
+# winter  n mean_duration sd_duration
+#1 2012-2013  5      146.0000    3.674235
+#2 2013-2014 11      160.6364    9.124393
+#3 2014-2015  5      166.2000    2.387467
+```
+
+- tagging info (table)
+
+```{r}
+tags.df$tag_life <- as.numeric(gsub(" days", "", tags.df$EST_TAG_LIFE))
+tagging.summary <- tags.df %>%
+  group_by(year(date), TAG_MODEL) %>%
+  summarise(
+    n = length(unique(id)),
+    meanFL = mean(LENGTH..cm.),
+    minFL = min(LENGTH..cm.),
+    maxFL = max(LENGTH..cm.),
+    sdFL = sd(LENGTH..cm.))
+   
+tagging.summary$tagLife[1] <- 793
+tagging.summary$tagLife[2] <- 162
+tagging.summary$tagLife[3] <- 881
+tagging.summary$tagLife[4] <- 162
+tagging.summary$tagLife[5] <- 162
+
+
+#year(date) TAG_MODEL  n   meanFL minFL maxFL      sdFL tagLife
+#1       2012    V13-1L  6 76.81667  57.0 116.6 21.550816     793
+#2       2012   V13P-1H  8 71.62500  58.9  79.9  8.020821     162
+#3       2013    V13-1L  5 68.40000  59.2  84.6  9.906563     881
+#4       2013   V13P-1H 10 56.80000  46.3  77.5 12.039288     162
+#5       2014   V13P-1H  3 45.40000  29.5  56.7 14.171450     162
+#TOTAL                  32  65.0      29.5  116.6   16.0
+
+
+```
+
+-- manually figure out when fish leave, make a table - in and out scandal
+```{r}
+in.out <- NULL
+in.out$id[1] <- 48409
+in.out$leave[1] <- "2013-09-04 01:54:47"
+in.out$entry[1] <- "2013-10-09 05:33:48"
+
+in.out$id[2] <- 48410
+in.out$leave[2] <- "2012-09-06 08:47:45"
+in.out$entry[2] <- "2012-10-24 04:29:54"
+
+in.out$id[3] <- 48410
+in.out$leave[3] <- "2013-08-02 02:19:07"
+in.out$entry[3] <- "2013-10-07 07:35:31"
+
+in.out$id[4] <- 48410
+in.out$leave[4] <- "2014-07-27 04:42:36"
+in.out$entry[4] <- "2014-09-09 06:38:27"
+
+in.out$id[5] <- 48411
+in.out$leave[5] <- "2013-08-29 23:59:23" # detected at station 5
+in.out$entry[5] <- "2013-10-07 07:15:13" # returned to station 2 then # 7
+
+in.out$id[6] <- 33158
+in.out$leave[6] <- "2013-08-18 02:16:48" # 2
+in.out$entry[6] <- "2013-10-03 05:17:30" # 2
+
+in.out$id[7] <- 33158
+in.out$leave[7] <- "2014-07-27 04:01:38" #1
+in.out$entry[7] <- "2014-08-30 04:03:51" #1
+
+in.out$id[8] <- 5729
+in.out$leave[8] <- "2013-08-26 23:54:01" #2
+in.out$entry[8] <- "2013-10-07 07:30:27" #2
+
+in.out$id[9] <- 5736 ## caught and released on 2013-08-29T04:38:00
+in.out$leave[9] <- "2013-09-27 23:29:33" #2 ### delayed exit could be due to tagging effect
+in.out$entry[9] <- "2013-10-14 01:46:18" #2
+
+in.out$leave <- ymd_hms(in.out$leave)
+in.out$entry <- ymd_hms(in.out$entry)
+in.out$duration <- round(as.period(new_interval(in.out$leave, in.out$entry), "seconds")/(3600*24), digits = 2)
+in.out$year <- year(in.out$leave)
+in.out <- data.frame(in.out)
+
+in.out.summary<- ddply(in.out, .(year), summarise, 
+      n = length(unique(id)),
+      mean_date_leave = mean(leave),
+      mean_date_return = mean(entry),
+      mean_duration = mean(duration),
+      sd = sd(duration))
+in.out.summary$sd_leave[1] <- sd(in.out$leave[in.out$year == 2012])/(3600*24)
+in.out.summary$sd_leave[2] <- sd(in.out$leave[in.out$year == 2013])/(3600*24)
+in.out.summary$sd_leave[3] <- sd(in.out$leave[in.out$year == 2014])/(3600*24)
+
+in.out.summary$sd_entry[1] <- sd(in.out$entry[in.out$year == 2012])/(3600*24)
+in.out.summary$sd_entry[2] <- sd(in.out$entry[in.out$year == 2013])/(3600*24)
+in.out.summary$sd_entry[3] <- sd(in.out$entry[in.out$year == 2014])/(3600*24)
+
+#year n     mean_date_leave    mean_date_return mean_duration        sd    sd_leave    sd_entry
+#1 2012 1 2012-09-06 08:47:45 2012-10-24 04:29:54        47.820        NA          NA          NA
+#2 2013 6 2013-08-28 12:58:56 2013-10-08 01:49:47        40.535 16.267704 18.87939290 18.87939290
+#3 2014 2 2014-07-27 04:22:07 2014-09-04 05:21:09        39.040  7.127636  0.02011653  0.02011653
+```
+
+-- circular plot of fish leave time. 
+```{r}
+in.out$leave.utc <- hour(in.out$leave)
+in.out$enter.utc <- hour(in.out$entry)
+in.out$leave.adt <- c(22, 5, 23, 1, 20, 23, 1, 20, 20)
+in.out$enter.adt <- c(2, 1, 4, 3, 4, 2, 1, 4, 22)
+
+### is it dark at time of entry/exit -- day, dark, nautical twilight (http://www.nrc-cnrc.gc.ca/eng/services/sunrise/) used New Glasgow 
+in.out$leave.sun <- c("dark", "light", "dark", "dark", "dark", "dark","dark", "dark","dark")
+in.out$enter.sun <- c("dark", "dark", "dark","dark","dark","dark","dark","dark","dark")
+
+p1 <- ggplot(in.out, aes(x = leave.adt, fill = leave.sun)) + geom_histogram(breaks = seq(0,24), width = 1) + coord_polar(start = 0, direction = 1) + scale_x_continuous(breaks = seq(0,24), labels = seq(0,24)) + xlab("Hour of Day (AST)") + ggtitle("Departure Time") + theme(axis.text = element_text(size = 30), axis.title = element_text(size =30), plot.title = element_text(size = 30)) +
+  scale_fill_manual(values = c("black", " dark grey")) + theme_bw()
+p1 
+
+p2 <- ggplot(in.out, aes(x = enter.adt, fill = enter.sun))+  geom_histogram(breaks = seq(0,24), width = 1) + coord_polar(start = 0, direction = 1) + scale_x_continuous(breaks = seq(0,24), labels = seq(0,24)) + xlab("Hour of Day (AST)") + ggtitle("Return Time") + theme(axis.text = element_text(size = 30), axis.title = element_text(size =30), plot.title = element_text(size = 30)) +
+  scale_fill_manual(values = c("black", "dark grey")) + theme_bw()
+p2
+
+ggsave(p1, file = "DeparturePlot.png", height = 13, width = 13)
+ggsave(p2, file = "ReturnPlot.png", height = 13, width = 13)
+```
+
+
+
+```{r}
+ow3.10 <- read.csv("~/Desktop/Data/R/Data Files/MR_OWT3_10m.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+ow3.10 <- ow3.10[,1:2]
+names(ow3.10) <- c("date", "temp")
+ow3.10$ddate <- ymd(substr(ow3.10$date, 1, 10))
+ow3.10$date <- ymd_hms(ow3.10$date)
+ow3.10 <- ow3.10[ow3.10$date < ymd("2015-05-25"),]
+
+ow3.mean <- ow3.10 %>%
+  group_by(ddate) %>%
+  summarise(
+    mean_temp = mean(temp)
+    )
+
+ggplot(ow3.mean, aes(ddate, mean_temp)) + geom_line() 
+
+mr7 <- read.csv("~/Desktop/Data/R/Data Files/MR_07_2012-2015.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+mr7 <- mr7[,1:2]
+names(mr7) <- c("date", "temp")
+mr7$ddate <- ymd(substr(mr7$date, 1, 10))
+mr7$date <- ymd_hms(mr7$date)
+mr7 <- mr7[mr7$date < ymd("2015-05-25"),]
+
+mr7.mean <- mr7 %>%
+  group_by(ddate) %>%
+  summarise(
+    mean_temp = mean(temp)
+    )
+
+ggplot(mr7.mean[mr7.mean$ddate >= ymd("2014-11-01"),], aes(ddate, mean_temp)) + geom_line() + geom_vline(aes(xintercept = e.2014))
+
+
+## need to figure out what the temps are for the window of upriver migration 
+
+ s.2012 <- ymd(min(ow.df$last_albert[ow.df$winter == "2012-2013"])) # 2012-11-21
+ e.2012 <- ymd(max(ow.df$last_albert[ow.df$winter == "2012-2013"])) # 2012-11-25
+
+ s.2013 <- ymd(min(ow.df$last_albert[ow.df$winter == "2013-2014"])) # 2013-11-12
+ e.2013 <- ymd(max(ow.df$last_albert[ow.df$winter == "2013-2014"])) # 2013-11-21
+
+ s.2014 <- ymd(min(ow.df$last_albert[ow.df$winter == "2014-2015"])) # 2014-11-20
+ e.2014 <- ymd(max(ow.df$last_albert[ow.df$winter == "2014-2015"])) # 2014-11-22
+
+mean(mr7$temp[mr7$date >= s.2012 & mr7$date <= (e.2012+days(1))]) # 9.1°C
+mean(mr7$temp[mr7$date >= s.2013 & mr7$date <= (e.2013+days(1))]) # 8.6°C
+mean(mr7$temp[mr7$date >= s.2014 & mr7$date <= (e.2014+days(1))]) # 6.3°C
+
+p.2014.last.albert <- ggplot(mr7.mean, aes(ddate, mean_temp)) + geom_line() + geom_vline(xintercept = as.numeric(s.2012)) + geom_vline(xintercept = as.numeric(e.2012)) + geom_vline(xintercept = as.numeric(s.2013))+                                                                                                                                                                                                geom_vline(xintercept = as.numeric(e.2013)) + geom_vline(xintercept = as.numeric(s.2014)) + geom_vline(xintercept = as.numeric(e.2014)) + scale_x_datetime(breaks = date_breaks("1 months"), labels = date_format("%b %Y"), limit = c(ymd("2014-11-01"), ymd("2014-12-30")))
+
+p.2013.last.albert <- ggplot(mr7.mean, aes(ddate, mean_temp)) + geom_line() + geom_vline(xintercept = as.numeric(s.2012)) + geom_vline(xintercept = as.numeric(e.2012)) + geom_vline(xintercept = as.numeric(s.2013))+                                                                                                                                                                                                geom_vline(xintercept = as.numeric(e.2013)) + geom_vline(xintercept = as.numeric(s.2014)) + geom_vline(xintercept = as.numeric(e.2014)) + scale_x_datetime(breaks = date_breaks("1 months"), labels = date_format("%b %Y"), limit = c(ymd("2013-11-01"), ymd("2013-12-30")))
+
+p.2012.last.albert <- ggplot(mr7.mean, aes(ddate, mean_temp)) + geom_line() + geom_vline(xintercept = as.numeric(s.2012)) + geom_vline(xintercept = as.numeric(e.2012)) + geom_vline(xintercept = as.numeric(s.2013))+                                                                                                                                                                                                geom_vline(xintercept = as.numeric(e.2013)) + geom_vline(xintercept = as.numeric(s.2014)) + geom_vline(xintercept = as.numeric(e.2014)) + scale_x_datetime(breaks = date_breaks("1 months"), labels = date_format("%b %Y"), limit = c(ymd("2012-11-01"), ymd("2012-12-30")))
+```
+
+- let's look at the depth preferences
+```{r}
+depth.df <- df[df$id %in% c(5720:5743),]
+ggplot(depth.df, aes(date, depth)) + geom_point() + facet_wrap(~id)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# TRASH BELOW HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+
+
+
+
+```{r}
+## units are messed up need to convert certain tags to days
+convert.tags <- c("48409", "48410", "48411", "5732", "5734", "5736", "33161", "33162")
+
+## this function converts the selected tag ids from above (convert.tags) that require conversion from hours into days (see note in enter."tagid" above)
+convert <- function(df){
+  for(i in 1:length(df$id)){
+    if(df$id[i] %in% convert.tags){
+      df[i,12] <- df[i,12]/24 # difficult to figure out. works well. 
+    } else {
+      df[i,12] <- df[i,12]
+    }
+  }
+  return(df)
+}
+
+enter.df <- convert(enter.df)
+
+
+df.2012 <- function(df){
+  last.date <- function(x){tail(x, 1)}
+  first.date <- function(x){head(x,1)}
+  
+  ascent <- last.date(df[year(df$date) == 2012,])
+  
+ albert <- last.date(df[year(df$date) == 2012 & df$station == "007",])
+ 
+ ascent$albert.last <- albert$date 
+  #descent <- first.date(df[which(df$date < ymd("2013-06-01") & df$date > ymd("2013-01-01")),])
+  
+  #combo <- rbind(ascent, descent)
+  
+  return(ascent)
+}
+
+#### average time spent in overwintering area for 2013-2014 ####
+## the first detection in the df wintering area to the last detection in the overwintering area. 
+df.combined <- merge(enter.df, leave.df, by = "id") 
+df.combined$length.df <- df.combined$date.y - df.combined$date.x
+
+mean(df.combined$length.df) # 161.1013 days 
+sd(df.combined$length.df) # 8.9754857
+
+## 2012 leaving from albert to head to overwintering area 
+ent12.48407 <- df.2012(df[df$id == 48407,])
+ent12.48408 <- df.2012(df[df$id == 48408,])
+ent12.48409 <- df.2012(df[df$id == 48409,])
+ent12.48410 <- df.2012(df[df$id == 48410,])
+ent12.48411 <- df.2012(df[df$id == 48411,])
+ent12.5720 <- df.2012(df[df$id == 5720,])
+ent12.5721 <- df.2012(df[df$id == 5721,])
+ent12.5722 <- df.2012(df[df$id == 5722,])
+ent12.5723 <- df.2012(df[df$id == 5723,])
+ent12.5728 <- df.2012(df[df$id == 5728,])
+ent12.5725 <- df.2012(df[df$id == 5725,])
+ent12.5726 <- df.2012(df[df$id == 5726,])
+ent12.5736 <- df.2012(df[df$id == 5736,]) ## ignore - this was used as a tester pre deployment 
+
+enter.2012 <- rbind(ent12.48407, 
+                    ent12.48408,
+                    ent12.48409, 
+                    ent12.48410, 
+                    ent12.48411,
+                    ent12.5720, 
+                    ent12.5721, 
+                    ent12.5722,
+                    ent12.5723,
+                    ent12.5728,
+                    ent12.5725,
+                    ent12.5726
+                    )
+###### TO DO: 
+# 1) Create arrival date:
+#                         - base this on day fish was last detected at stations MR_07, MR_08, MR_09
+#                         - date, time, and station of arrival
+#                         - seperate these fish into groups (?) later query whether or not their arrival time is based on lenght etc. 
+#
+#2) Create departure date: 
+#                         - figure out where the fish is last detected, in the array, prior to being detected somewhere else
+#                         
+#3) look at detections per day per station per fish 
+#
+# 4) look at depth preferences 
+
+
+#### percent detections within overwintering hole ####
+
+detect <- function(x){
+  total <- length(x)
+  
+  mr10 <- length(which(x == "010"))
+  perc10 <- mr10/total
+  
+  mr11 <- length(which(x == "011"))
+  perc11 <- mr11/total
+  
+  mr11.5 <- length(which(x == "011.5"))
+  perc11.5 <- mr11.5/total 
+  
+  print(c(total,perc10,perc11, perc11.5))
+}
+
+
+df$month <- month(df$date, label = TRUE)
+#df$month <- factor(df$month, levels = c("Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May"))
+
+df.summary <- data.frame(summaryBy(station~id+month, data = df[df$date >= ymd("2013-11-14") & df$date <= max(df.combined$date.y) & df$station %in% df.stations,], FUN = list(detect)))
+
+names(df.summary) <- c("id", "month","total", "10","11","11.5") 
+
+
+df.summary.2 <- data.frame(summaryBy(station~month, data = df[df$date >= ymd("2013-11-14") & df$date <= max(df.combined$date.y) & df$station %in% df.stations,], FUN = list(detect)))
+names(df.summary.2) <- c("month","total", "10","11","11.5") 
+
+
+df.sum.melt <- melt(df.summary, id = c("id", "month", "total"),measured = c("10", "11", "11.5"))
+
+
+names(df.sum.melt) <- c("id", "month", "total detections", "station", "percent")
+
+
+full.winter.id <- c("48407", "48408","48409","48410","48411","33158","33159","33160","33161","33162","5739")
+
+## create boxplot of df detections per station per month
+df.sum.melt$month <- month(df.sum.melt$month, label = TRUE, abbr = FALSE)
+
+ggplot(df.sum.melt, aes(station, percent)) + geom_boxplot() + facet_grid(~month)
+
+
+
+## this is old stuff.. 
+percent.plot.subset <- df.sum.melt[df.sum.melt$id %in% full.winter.id,]
+
+percent.plot.subset$id <- factor(percent.plot.subset$id, levels = full.winter.id)
+
+percent.df.station <- ggplot(percent.plot.subset, aes(x = month, y = percent, shape = Station, colour = Station)) + geom_point(size = 4) +
+  facet_grid(~id) + geom_point(colour = "grey90") + theme_bw() + theme(strip.background = element_rect(fill = 'white'))+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+ labs(x = "Month", y = "Proportion of detections (%)") +
+  theme(axis.title.x = element_text(size = 16), 
+        axis.title.y = element_text(size = 16), 
+        plot.title = element_text(size = 18),
+        axis.text.x = element_text(angle = 90))
+
+percent.df.station
+
+
+ggsave(percent.df.station, file = "overwintering-detections.png", dpi = 300, path = "~/Desktop/Thesis/Presentations/Ocean Tracking Network/2014/Poster/plots", width = 18, height = 10, units = "in")
+
+#### creating unique fish detected per station per day and month ####
+
+dpd <- ddply(df,.(as.Date(date, format = "%y%m%d"), station, month, year), summarize, nfish = length(unique(id)), 
+            .progress = "text") 
+
+names(dpd) <- c("date", "station", "month", "year", "nfish") # adjust names of df
+
+## load in the station names
+stations <- read.csv("~/Desktop/Data/OTN/Cape Breton/Metadata/Receivers/combined/bsb_locations.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+
+stations$station <- c("001", "002", "003", "004", "005", "006", "007", "008", "009",
+                      "010", "011", "011.5", "012", "013",
+                      "014", "015", "016", "017", "018", "019") # excel is a pain in the ass so I need to manually put in station names
+
+
+dpd <- merge(dpd, stations, by = "station") # insert lat & lon for station names
+dpd <- arrange(dpd, date)# clean it up 
+dpd$date <- ymd(dpd$date) 
+
+# detections per fish 
+dpf <- ddply(df,.(as.Date(date, format = "%y%m%d"), id, station, month, year), summarize, ndetect = length(id), .progress = "text")
+names(dpf) <- c("date", "id", "station", "month", "year", "ndetect")
+dpf <- merge(dpf, stations, by = "station")
+dpf$date <- ymd(dpf$date)
+dpf <- arrange(dpf, date)
+
+## unique fish detected per month
+
+dpm <- ddply(df,.(station, month, year), summarize, nfish = length(unique(id)), .progress = "text")
+
+#dpm <- ddply(dpd, .(station, year, month), summarize, mean = round(mean(nfish),1))
+
+dpm <- merge(dpm, stations, by = "station") ## detections per month - number of mean fish detected per month 
+dpm$month <- month(dpm$month, label = TRUE, abbr = FALSE)
+
+dps <- ddply(df, .(station, year, month,day), summarize, ndetect = length(id), .progress = "text") ## this is detections per station per year per month per day
+
+
+
+dps$month <- month(dps$month, label = TRUE, abbr = FALSE)
+dps <- merge(dps, stations, by = "station")
+
+dps$date <- ymd(paste(dps$year, dps$month, dps$day))
+
+### number of tags detected per month
+
+length(unique(df$id[df$month == 5 & df$year == 2013]))
+
+tpm <-  ddply(df,.(month, year), summarize, nfish = length(unique(id)), 
+              .progress = "text") 
+
+#### maping from andy ####
+
+## Ddfnload map files
+# google map
+#MR <- get_map (location = c(left = -60.31 bottom = 45.83, right = -59.9681, top = 46.10), source = "google", maptype = "satellite")
+
+MR <-  get_map (location = c(left = -60.32, bottom = 45.81, right = -59.95, top = 46.09), source = "google", maptype = "terrain")
+ggmap(MR, extent = "device",legend = "bottomleft")
+
+## View map/set map background
+# extent = "device" adds/removes lat lon on edge
+MRmap <- ggmap (MR, extent = "device")#, size = c (400,400))
+MRmap
+
+attr(MR, "bb")
+#ll.lat    ll.lon   ur.lat    ur.lon
+#1 45.79678 -60.35438 46.10232 -59.91493
+
+mr.winter <- get_map(location = c(lon = -60.10906, lat = 46.00799 ), source = "google", maptype = "terrain", zoom = 12)
+
+attr(mr.winter, "bb")
+#ll.lat    ll.lon   ur.lat    ur.lon
+#1 45.93151 -60.21875 46.08412 -59.99903
+
+mr.winter <- get_map (location = c(left = -60.25, bottom = 45.932, right = -59.90, top = 46.08), source = "google", maptype = "terrain")
+
+mr.winter.map <- ggmap(mr.winter, extent = "device")
+mr.winter.map
+
+####rough plots dpm, dpd, dps ####
+## Use map for ggplot background
+all <- MRmap +
+  geom_point(data = dpd, aes(x = lon, y = lat, size = nfish), alpha = 0.6, colour = "red")  +
+  scale_size(range = c(2,16)) + facet_wrap(~month)
+
+all 
+
+spring <- MRmap + geom_point(data = dpd[dpd$date >= ymd("2014-04-01") & dpd$date < ymd("2014-07-01"),], 
+                             aes(x = lon, y = lat, size = nfish), alpha = 0.6, colour = "red") +
+                              scale_size(range = c(2,16)) + facet_wrap(~month)
+spring
+
+
+winter <- MRmap + geom_point(data = dpd[which(dpd$date >= ymd("2013-11-01") & dpd$date < ymd("2014-05-01")),], 
+                             aes(x = lon, y = lat, size = nfish), alpha = 0.6, colour = "red") +
+                              scale_size(range = c(2,16)) + facet_wrap(~month)
+winter
+  
+
+november <- MRmap + geom_point(data = dpd[which(dpd$date >= ymd("2013-11-01") & dpd$date < ymd("2013-12-01")),], 
+                             aes(x = lon, y = lat, size = nfish), alpha = 0.6, colour = "red") +
+  scale_size(range = c(2,16)) + facet_wrap(~date)
+november
+
+december  <- MRmap + geom_point(data = dpd[which(dpd$date >= ymd("2013-12-01") & dpd$date < ymd("2014-01-01")),], 
+                                         aes(x = lon, y = lat, size = nfish), alpha = 0.6, colour = "red") +
+  scale_size(range = c(2,16)) + facet_wrap(~date)
+december
+
+#### plot with nfish.month ####
+
+test <- MRmap +
+  geom_point(data = dpm, aes(x = lon, y = lat, size = mean), alpha = 0.6, colour = "red")  +
+  scale_size(range = c(2,16)) + facet_wrap(~month)
+test
+
+
+dpm.2012 <- MRmap +
+  geom_point(data = dpm[dpm$year == 2012,], aes(x = lon, y = lat, size = nfish), alpha = 0.6, colour = "red")  +
+  scale_size(range = c(2,16)) + facet_wrap(~month)
+
+dpm.2013 <- MRmap +
+  geom_point(data = dpm[dpm$year == 2013,], aes(x = lon, y = lat, size = nfish), alpha = 0.6, colour = "red")  +
+  scale_size(range = c(2,16)) + facet_wrap(~month)
+
+dpm.2014 <- MRmap +
+  geom_point(data = dpm[dpm$year == 2014,], aes(x = lon, y = lat, size = nfish), alpha = 0.6, colour = "red")  +
+  scale_size(range = c(2,16)) + facet_wrap(~month)
+   
+
+# I keep getting remove rdfs... may have to do with the coordinate system? 
+      # - problem resolved on 2014-08-13 --> MR_01 was outside the boundary of the map -- eroneously entered lat long coordinate for somewhere over in Nyanza 
+
+attr(MR, "bb")
+#ll.lat    ll.lon   ur.lat    ur.lon
+#1 45.79678 -60.35438 46.10232 -59.91493
+
+
+#### Plotting Functions ####
+
+dpd.date <- function(start, end){
+  MRmap +
+    geom_point(data = dpd[dpd$date >= ymd(start)  & dpd$date <= ymd(end) ,], aes(x = lon, y = lat, size = nfish), alpha = 0.6, colour = "red")  +
+    scale_size(range = c(2,16)) + facet_wrap(~date)
+}
+
+                      # plot dpf - detections per fish per day #
+dpf.date <- function(fish, start, end){
+  MRmap +
+    geom_point(data = dpf[dpf$date >= ymd(start)  & dpf$date <= ymd(end) & dpf$id == fish,], aes(x = lon, y = lat, size = ndetect), alpha = 0.6, colour = "red")  +
+    scale_size(range = c(2,16)) + facet_wrap(~date)
+}
+
+
+dps.date <- function(start, end){
+  MRmap +
+    geom_point(data = dps[dps$date >= ymd(start)  & dps$date <= ymd(end) ,], aes(x = lon, y = lat, size = ndetect), alpha = 0.6, colour = "red")  +
+    scale_size(range = c(2,16)) + facet_wrap(~date)
+}
+
+#### plots for AFS ####
+
+dpm.2013.mj <- ggmap(MR, extent = "device",legend = "topright", padding = 0.01) +
+  geom_point(data = dpm[dpm$year == 2013 & dpm$month %in% c("May", "June"),], aes(x = lon, y = lat, size = nfish), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(3,19), name = "# of fish") +  facet_wrap(~month) + theme(legend.title = element_text(size = 15),
+                                                                                strip.background = element_rect(fill = "white"), 
+                                                                                strip.text.x = element_text(size = rel(3))) +
+  geom_text(aes(x = lon, y = lat, label = station), data = ws.station.afs, size = 10) ### lets incorporate some ws stations to make life easier in ppt
+  
+dpm.2013.ja <- ggmap(MR, extent = "device",legend = "topright", padding = 0.01) +
+  geom_point(data = dpm[dpm$year == 2013 & dpm$month %in% c("July", "August"),], aes(x = lon, y = lat, size = nfish), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(3,19), name = "# of fish") +  facet_wrap(~month) + theme(legend.title = element_text(size = 15),
+                                                                                strip.background = element_rect(fill = "white"), 
+                                                                                strip.text.x = element_text(size = rel(3))) +
+  geom_text(aes(x = lon, y = lat, label = station), data = ws.station.afs, size = 10)
+
+
+dpm.2013.so <- ggmap(MR, extent = "device",legend = "topright", padding = 0.01) +
+  geom_point(data = dpm[dpm$year == 2013 & dpm$month %in% c("September", "October"),], aes(x = lon, y = lat, size = nfish), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(3,19), name = "# of fish") +  facet_wrap(~month) + 
+  theme(legend.title = element_text(size = 15), strip.background = element_rect(fill = "white"),  strip.text.x = element_text(size = rel(3))) +
+  geom_text(aes(x = lon, y = lat, label = station), data = ws.station.afs, size = 10, hjust = 0, vjust = 1)
+
+dpm.2013.nd <- ggmap(MR, extent = "device",legend = "topright", padding = 0.01) +
+  geom_point(data = dpm[dpm$year == 2013 & dpm$month %in% c("November", "December"),], aes(x = lon, y = lat, size = nfish), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(3,19), name = "# of fish") +  facet_wrap(~month) + 
+  theme(legend.title = element_text(size = 15), strip.background = element_rect(fill = "white"),  strip.text.x = element_text(size = rel(3))) +
+  geom_text(aes(x = lon, y = lat, label = station), data = ws.station.afs, size = 10)#, hjust = 0, vjust = 1)
+
+dpm.2013.n <- ggmap(mr.winter, extent = "device",legend = "topright", padding = 0.01) +
+  geom_point(data = dpm[dpm$year == 2013 & dpm$month %in% c("November"),], aes(x = lon, y = lat, size = nfish), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(3,19), name = "# of fish") +  facet_wrap(~month) + 
+  theme(legend.title = element_text(size = 15), strip.background = element_rect(fill = "white"),  strip.text.x = element_text(size = rel(3))) 
+  
+dpm.2013.d <- ggmap(mr.winter, extent = "device",legend = "topright", padding = 0.01) +
+  geom_point(data = dpm[dpm$year == 2013 & dpm$month %in% c("December"),], aes(x = lon, y = lat, size = nfish), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(3,19), name = "# of fish") +  facet_wrap(~month) + 
+  theme(legend.title = element_text(size = 15), strip.background = element_rect(fill = "white"),  strip.text.x = element_text(size = rel(3))) 
+
+
+dpm.2014.jfm.big <- ggmap(MR, extent = "device",legend = "topright", padding = 0.01) +
+  geom_point(data = dpm[dpm$year == 2014 & dpm$month %in% c("January", "February", "March"),], aes(x = lon, y = lat, size = nfish), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(3,19), name = "# of fish") +  facet_wrap(~month) + 
+  theme(legend.title = element_text(size = 15), strip.background = element_rect(fill = "white"),  strip.text.x = element_text(size = rel(3))) #+
+ # geom_text(aes(x = lon, y = lat, label = station), data = ws.station.afs, size = 10)#, hjust = 0, vjust = 1)
+
+dpm.2014.jfm.small <- ggmap(mr.winter, extent = "device",legend = "bottomright", padding = 0.01) +
+  geom_point(data = dpm[dpm$year == 2014 & dpm$month %in% c("January", "February", "March"),], aes(x = lon, y = lat, size = nfish), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(3,19), name = "# of fish") +  facet_wrap(~month) + 
+  theme(legend.title = element_text(size = 15), strip.background = element_rect(fill = "white"),  strip.text.x = element_text(size = rel(3))) #+
+
+dpm.2014.jan.small <- ggmap(mr.winter, extent = "device",legend = "bottomright", padding = 0.01) +
+  geom_point(data = dpm[dpm$year == 2014 & dpm$month %in% c("January"),], aes(x = lon, y = lat, size = nfish), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(3,19), name = "# of fish") +  facet_wrap(~month) + 
+  theme(legend.title = element_text(size = 15), strip.background = element_rect(fill = "white"),  strip.text.x = element_text(size = rel(3))) #+
+
+dpm.2014.feb.small <- ggmap(mr.winter, extent = "device",legend = "bottomright", padding = 0.01) +
+  geom_point(data = dpm[dpm$year == 2014 & dpm$month %in% c("February"),], aes(x = lon, y = lat, size = nfish), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(3,19), name = "# of fish") +  facet_wrap(~month) + 
+  theme(legend.title = element_text(size = 15), strip.background = element_rect(fill = "white"),  strip.text.x = element_text(size = rel(3))) #+
+
+dpm.2014.mar.small <- ggmap(mr.winter, extent = "device",legend = "bottomright", padding = 0.01) +
+  geom_point(data = dpm[dpm$year == 2014 & dpm$month %in% c("March"),], aes(x = lon, y = lat, size = nfish), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(3,19), name = "# of fish") +  facet_wrap(~month) + 
+  theme(legend.title = element_text(size = 15), strip.background = element_rect(fill = "white"),  strip.text.x = element_text(size = rel(3))) #+
+
+
+dpm.2014.am <- ggmap(MR, extent = "device",legend = "topright", padding = 0.01) +
+  geom_point(data = dpm[dpm$year == 2014 & dpm$month %in% c("April", "May"),], aes(x = lon, y = lat, size = nfish), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(3,19), name = "# of fish") +  facet_wrap(~month) + 
+  theme(legend.title = element_text(size = 15), strip.background = element_rect(fill = "white"),  strip.text.x = element_text(size = rel(3))) #+
+
+dpm.2014.jf
+
+
+dpm.2014.am
+
+dps.summer <-  ggmap(mr.winter, extent = "device",legend = "bottomright", padding = 0.01) +
+  geom_point(data = dps[dps$year == 2013 & dps$month %in% c("May", "June", "July", "August", "September", "October", "November"),], aes(x = lon, y = lat, size = ndetect), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(3,19), name = "# of fish") +  facet_wrap(~month) + 
+  theme(legend.title = element_text(size = 15), strip.background = element_rect(fill = "white"),  strip.text.x = element_text(size = rel(3))) #+
+
+dps.summer <- ggmap(MR, extent = "device",legend = "bottomright") +
+  geom_point(data = dps[dps$year == 2013 & dps$month %in% c("May", "June", "July", "August", "September", "October", "November"),], aes(x = lon, y = lat, size = ndetect), alpha = 0.55, colour = "red")  +
+  scale_size(range = c(2,20), name = "# of detections") +  facet_wrap(~month) + 
+  theme(legend.title = element_text(size = 15), strip.background = element_rect(fill = "white"),  strip.text.x = element_text(size = rel(3))) 
+  
+
+
+wd.df <- getwd()
+# mj = may june, ja = july august, etc.
+setwd("~/Desktop/Thesis/Presentations/AFS/2014/plots/detections per month")
+ggsave(dpm.2013.mj, file = "2013.mj.pdf", width = 24, height = 13, units = "in", dpi = 300 )
+ggsave(dpm.2013.ja, file = "2013.ja.pdf", width = 24, height = 13, units = "in", dpi = 300 )
+ggsave(dpm.2013.so, file = "2013.so.pdf", width = 24, height = 13, units = "in", dpi = 300 ) 
+ggsave(dpm.2013.nd, file = "2013.nd.pdf", width = 24, height = 13, units = "in", dpi = 300 )
+
+ggsave(dpm.2013.n, file = "2013.nov.pdf", width = 24, height = 13, units = "in", dpi = 300 )
+ggsave(dpm.2013.d, file = "2013.dec.pdf", width = 24, height = 13, units = "in", dpi = 300 )
+wggsave(dpm.2014.jfm.big, file = "2014.jfm.big.pdf", width = 24, height = 13, units = "in", dpi = 300 )
+ggsave(dpm.2014.jfm.small, file = "2014.jfm.small.pdf", width = 24, height = 13, units = "in", dpi = 300 )
+ggsave(dpm.2014.jan.small, file = "2014.jan.small.pdf", width = 24, height = 13, units = "in", dpi = 300 )
+ggsave(dpm.2014.feb.small, file = "2014.feb.small.pdf", width = 24, height = 13, units = "in", dpi = 300 )
+ggsave(dpm.2014.mar.small, file = "2014.mar.small.pdf", width = 24, height = 13, units = "in", dpi = 300 )
+ggsave(dpm.2014.am, file = "2014.am.pdf", width = 24, height = 13, units = "in", dpi = 300 )
+
+ggsave(dpm.2013.n, file = "2013.n.pdf", width = 12, height = 12, units = "in", dpi = 300 )
+
+#### plots with code from Jill Bennet #####
+
+p <- ggplot(df[df$date >= ymd("2014-04-01") & df$date <= ymd("2014-07-01"),], aes(date, id, group = id, shape = station))
+p + geom_point()+ geom_line()
+
+p <- ggplot(df[df$date >= ymd("2014-04-01") & df$date <= ymd("2014-07-01"),], aes(date, station, group=station, col=station))
+p + geom_point() + geom_line() + facet_grid(id~.)
+
+p <- ggplot(df[df$date >= ymd("2014-04-01") & df$date <= ymd("2014-07-01"),], aes(date, station))
+p + geom_point() + geom_line() + facet_grid(id~.)
+
+p <- ggplot(df[df$date >= ymd("2014-04-01") & df$date <= ymd("2014-07-01"),], aes(date, id, group=id, shape=station, col = station))
+p + geom_point() + facet_grid(id~.)
+
+#### renaming x axis for Laura ####
+
+
+#### NEED TO GET SOME FIGURES AND PRODUCE THIS SHIT UP ####
+# X axis = detection date
+  # continuous
+# Y axis = station name 
+  # points are detection events
+
+
+#### code does not work beldf here ####
+
+
+
+# need to isolate only the tag numbers I want
+
+# paste
+
+#### working with depth data ####
+depth.df <- na.omit(df)         # <- all depths for 
+depth.df <- na.omit(depth.df)
+
+mean(depth.df$depth) # 6.926
+sd(depth.df$depth) # 1.30 # 1.116
+length(depth.df$depth)# 114905 ## 115038 2014-09-23
+
+depth.feb <- depth.df[month(depth.df$date) == "2",]
+
+depth.feb.sum <- ddply(depth.feb, c("station"), summarise,
+                   N    = length(depth),
+                   mean = mean(depth),
+                   sd   = sd(depth),
+                   se   = sd / sqrt(N) )
+depth.feb.sum
+
+depth.sum <- ddply(depth.df[depth.df$date>= ymd("2013-12-01") & depth.df$date < ymd("2014-05-01"),], c("station", "month"), summarise,
+               N    = length(depth),
+               mean = mean(depth),
+               sd   = sd(depth),
+               se   = sd / sqrt(N) )
+depth.sum
+
+dp <-ggplot(depth.df[depth.df$date >= ymd("2013-12-01") & depth.df$date < "2014-05-01",], aes(date, depth))
+dp + geom_point() + geom_line() + facet_grid(id~.)
+
+dp.5739 <- ggplot(depth.df[depth.df$date >= ymd("2014-02-20") & depth.df$date < ymd("2014-02-21") & depth.df$id == "5739",], aes(date, depth))
+dp.5739 + geom_point() + geom_line() + facet_grid(.~station)
+
+
+
+
+
+
+# don't understand hdf this works... 
+
+DT <- data.table(df[df$date <= ymd("2013-12-31") & df$station %in% outside.array & df$id != 48418,])
+
+setkey(DT, date, id)
+last.df.detect <- DT[DT[,.I[.N], by=id][, V1]]
+last.df.detect ## these are the last overwintering detections prior to heading into the overwintering hole
+
+mean(last.df.detect$date) # 2013-11-17 @ 18:17 ---> Without 48418 |||| 2013-11-19 20:41:21 
+sd(last.df.detect$date) # 523766.4 / (60*60*24) = 6.06 days ---> without 48418 ||||   958318.(60*60*24) = 11.0916 days
+
+
+
+### Need to to summary of detections per station as percentage of total detections 
+
+
+ddply(ow[ow$date >= ymd("2013-11-13"),], .(id), FUN = detect)
+
+tl.2012 <- c(61.4,69.5,73.4,90.6,72.4,125.0,74.4,66.4,63.6,84.4,85.6,76.9,77.6,84.4) # acoustically tagged
+mean(tl.2012) # 79.0 cm
+min(tl.2012) # 61.4
+max(tl.2012) # 125.0 
+
+tl.2013 <- c(69.3,75.3,63.2,63.7,52.8,49.7,90.0,79.9,50.0,66.3,69.1,82.5,51.0,49.9,57.3)# acoustically tagged
+mean(tl.2013) # 64.7
+min(tl.2013) # 49.7
+max(tl.2013) # 90.0 
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

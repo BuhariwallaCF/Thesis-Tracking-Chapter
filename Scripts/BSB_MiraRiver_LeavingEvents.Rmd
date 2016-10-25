@@ -1,0 +1,114 @@
+---
+title: "Calculate leaving and entrance"
+author: "Colin F. Buhariwalla"
+date: "July 28, 2016"
+output: html_document
+---
+
+require(dplyr)
+require(lubridate)
+require(ggplot2)
+
+read in the condensed data files from OTN toolbox filtering
+```{r}
+source("functions/otn_compressed_fun.r")
+mrdf <- otn_compressed_fun(mrdf)
+mrdf <- filter(mrdf, year(startdate)>2012) # do only years ahead of this. for 2012, rely on visual identification
+```
+
+
+trying something different
+```{r}
+mrdf <- mrdf %>% arrange(id, startdate) %>% group_by(id) %>% mutate(prev_detec2 = lag(enddate,2), prev_detec = lag(enddate), cur_det_start = startdate, cur_det_end = enddate, next_detec = lead(startdate), next_detec2 = lead(startdate, 2))
+
+# calculate the time difference between last detection at station x and first detection at station y.
+# then add in the station number for the previous station 
+mrdf <- mrdf %>% group_by(id) %>% mutate(time_dif = next_detec - enddate, prev3_stn = lag(station, 3), prev2_stn = lag(station, 2), prev_stn = lag(station), cur_stn = station, next_stn = lead(station), next2_stn = lead(station, 2), next3_stn = lead(station, 3))
+
+# adding a direction of travel based on stations encountered
+mrdf <- mrdf %>% mutate(swim_direc = ifelse(prev2_stn > prev_stn & prev_stn > cur_stn, -1,  
+                                    ifelse(prev2_stn < prev_stn & prev_stn < cur_stn, 1, 0)))
+
+mrdf$det_int <- new_interval(mrdf$startdate, mrdf$enddate)
+```
+
+The shit is not showing up becuase some detections occur on the same stationa as they left (fish leaves, then comes back and encounters the same station) or fish can hit one station on the way down (e.g. 5) and not encounter any others on the way to the sea then on it's return log onto one of those stations... I will now try and resolve these two issues before this shit makes me go insane... 
+
+```{r}
+a <- mrdf[as.period(mrdf$det_int) > hours(24) & mrdf$station < 6,] # Detections that occur greater than 24 hours apart, at stations less than 7
+b <- filter(mrdf, time_dif >= (24*3600), station < 6)# 24 hours is the threshold that I am using # time_dff <- next_detec - enddate (of current detec)
+a <- anti_join(a, b, by = "startunqdetecid") # make sure we're not overlapping in the shit we're combing through
+c <- filter(mrdf, avg_min_between_det >= 120, station < 6) # average time between detections is 2 hours or more
+c <- anti_join(c, a, by = "startunqdetecid") # make sure not overlapping shit here
+c <- anti_join(c, b, by = "startunqdetecid")
+```
+
+#there is still a lot of shit there that I need to eliminate. I can try to eliminate the areas where average detections are like 16 hours (1000 min) apart? 
+
+# interesting example, fish 33158 swam from stn 5 to stn 2 in 4.39 hours, but from station 2 to station 5 in 2.07 hours... word yo. Then, when it swam out to leave the system it took 3.72 hours to swim from 5 to 2 and 3.92 hours when it swam back up in October
+
+Events that haven't already been identified : 
+"BSB-A69-9002-5721-1529"; Not a leaving event... the absence of detections were associated with lack of coverage
+2014: 
+"BSB-A69-1303-48411-886701" 
+48411 - I stupidly pulled the receivers from MR 13 September 2014 and this is likely a down estuary movement, but too few receivers to detect the upward migration for the return event. 
+
+Events that I am missing from original leave/return visual idetification:
+2014:
+33158
+
+
+
+
+AFTER the above code has been run and gone through, I need to find actual leaving and return dates. I don't know how I can isolate this? Maybe use the start and end unqdetecid, extract these detections from the original detection files, calculate the differences between subsequent detections detections (using lead and lag) and then figure out which one is leave, which one is return. apres, put leave/enter detections in a file (id, date, unqdetecid, station). as well as: time it takes to get to next station, time it takes to get to station 4, time it takes to arrive at station 7, 
+
+
+RETRY THE LEFT AND LEAVING EVENTS!!!!
+```{r}
+left.a <- c("BSB-A69-9002-5736-395667","BSB-A69-9002-5729-305559","BSB-A69-1303-48411-886701","BSB-A69-1303-48410-886684","BSB-A69-1303-48410-243331","BSB-A69-1303-48409-976162","BSB-A69-1303-48409-331865","BSB-A69-1303-33158-885612","BSB-A69-1303-33158-280102","BSB-A69-1303-33158-236004","BSB-A69-1303-33158-207355") # startunqdetecid
+left.b <- c("BSB-A69-1303-48411-317185","") # this is endunqdetecid
+left.maybe <- c("BSB-A69-1303-48411-886717")# this is endunqdetecid
+#left.c <- c("")# no leaving events detected through this filtering process 
+```
+
+one df for all leaving events
+```{r}
+ldf <- NULL
+ldf$unqdetecid <- c("BSB-A69-9002-5736-395667","BSB-A69-9002-5729-305559","BSB-A69-1303-48411-886701","BSB-A69-1303-48410-886684","BSB-A69-1303-48410-243331","BSB-A69-1303-48409-976162","BSB-A69-1303-48409-331865","BSB-A69-1303-33158-885612","BSB-A69-1303-33158-280102","BSB-A69-1303-33158-236004","BSB-A69-1303-33158-207355","BSB-A69-1303-48411-317185","BSB-A69-1303-48411-886717")
+ldf$id <-  sapply(strsplit(ldf$unqdetecid, split = "-"), "[", 4) 
+ldf <- as.data.frame(ldf, stringsAsFactors = FALSE)
+```
+
+load in raw detection file:
+```{r}
+mr.df <- read.csv("data/mrdf.csv", stringsAsFactors = FALSE)
+source("functions/dates_and_times_fun.R")
+mr.df  <- dates_and_times_fun(mr.df)
+```
+
+isolate the dates of each leaving and return event
+```{r}
+exentdf <- NULL
+for(i in 1:length(ldf$unqdetecid)){ # for each isolated leaving event
+getaway <- mr.df %>% select(unqdetecid, date, station, id ) %>% filter(id == ldf$id[i], date >= date[unqdetecid ==     ldf$unqdetecid[i]]) %>% top_n(100, desc(date)) # use the compressed data file startunqdetecid (unqdetecid here) to isolate the 100 raw detections around the leave/return event 
+
+getaway <- getaway %>% 
+mutate(next_detec = lead(date), time_next_detec = difftime(lead(date),date,units="secs"), time_prev_detec = difftime(date, lag(date), units="secs"), next_station = lead(station), orig_detec = ldf$unqdetecid[i]) %>% # create a little filtering tool to get the next station, original unqdetecid from ldf (to troubleshoot/verify that all isolated detections were found); NOTE: had to use difftime and units since this was fucking me up. Most nextdate-date were seconds, however, a few were in days 
+filter(time_next_detec >= seconds(86400)) # greater than 1 day detection difference between them #### THIS IS TO BE CONSISTENT WITH ABOVE filtering
+
+comeback <- getaway %>% transmute(id = id, exit = date, enter = next_detec, exit_stn = station, enter_stn = next_station, time_away = difftime(next_detec,date, units="secs"), orig_detec = orig_detec) # just cleaning everything up for the output dataframe 
+
+exentdf <- bind_rows(exentdf, comeback)
+rm(getaway, comeback)
+}
+```
+
+What do I want? 
+- I want a data frame that will give me ID, date of exit, date of retun, length of time at sea 
+- If I want to get swim speeds/length of time it takes to say, head from MR07 to mouth of the system, I can look at compressed detection files and work something out... not for right now. Finish the circular plots
+
+```{r}
+write.csv(exentdf, "Data/BSB_MiraRiver_LeavingEvents.csv",row.names = F)
+```
+
+ 

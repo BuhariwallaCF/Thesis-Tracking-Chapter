@@ -1,0 +1,55 @@
+---
+title: "checking matched detection files"
+author: "Colin F. Buhariwalla"
+date: "July 11, 2016"
+output: html_document
+---
+
+checking matched detection files to see if they are the same or different from those I've already isolated false detections
+
+read in old OTNsandbox files  
+```{r}
+bsbo.2012 <- read.csv("~/Desktop/OTNsandbox/data/bsb_matched_detections_2012.csv", stringsAsFactors = F, header = T) 
+bsbo.2013 <- read.csv("~/Desktop/OTNsandbox/data/bsb_matched_detections_2013.csv", stringsAsFactors = F, header = T) 
+bsbo.2014 <- read.csv("~/Desktop/OTNsandbox/data/bsb_matched_detections_2014.csv", stringsAsFactors = F, header = T) 
+bsbo.2015 <- read.csv("~/Desktop/OTNsandbox/data/bsb_matched_detections_2015.csv", stringsAsFactors = F, header = T) 
+```
+
+read in new matched files  
+```{r}
+mr1 <- read.csv("Raw Data/bsb_matched2_detections_2012.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+mr2 <- read.csv("Raw Data/bsb_matched2_detections_2013.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+mr3 <- read.csv("Raw Data/bsb_matched2_detections_2014.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+mr4 <- read.csv("Raw Data/bsb_matched2_detections_2015.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+```
+
+read in deleted matched files  
+```{r}
+d1 <- read.csv("Raw Data/Deletion bin/bsb_matched_detections_2012.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+d2 <- read.csv("Raw Data/deletion bin/bsb_matched_detections_2013.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+d3 <- read.csv("Raw Data/Deletion bin/bsb_matched_detections_2014.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+d4 <- read.csv("Raw Data/Deletion bin/bsb_matched_detections_2015.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+```
+
+do an antijoin to see which ones are different. 
+```{r, echo=FALSE}
+require(dplyr)
+trash1 <- anti_join(mr1, bsbo.2012, by = "collectioncode") # year 2012 is good
+trash2 <- anti_join(mr2, bsbo.2013, by = "collectioncode") # year 2013 is good
+trash3 <- anti_join(mr3, bsbo.2014, by = "collectioncode") # good this way
+trash4 <- anti_join(mr4, bsbo.2015, by = "collectioncode") # good here too 
+
+trash1 <- anti_join(bsbo.2012, mr1, by = "collectioncode") # year 2012 is good
+trash2 <- anti_join(bsbo.2013, mr2, by = "collectioncode") # year 2013 is good
+trash3 <- anti_join(bsbo.2014, mr3, by = "collectioncode") # good this way
+trash4 <- anti_join(bsbo.2015, mr4, by = "collectioncode") # all good.
+
+
+trash1 <- anti_join(mr1, d1, by = "collectioncode") # year 2012 is good
+trash2 <- anti_join(mr2, d2, by = "collectioncode") # year 2013 is good
+trash3 <- anti_join(mr3, d3, by = "collectioncode") # good this way
+trash4 <- anti_join(mr4, d4, by = "collectioncode") # good here too 
+
+```
+
+CONCLUSION, THE FALSE FILTERING WAS COMPLETED ON UPDATED DETECTION FILES THUS DOES NOT NEED TO BE REREUN!!!!!!! WAAHOOOO

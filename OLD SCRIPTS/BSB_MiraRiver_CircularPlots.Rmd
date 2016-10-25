@@ -1,0 +1,231 @@
+---
+title: "BSB_MiraRiver_CircularPlots"
+author: "Colin F. Buhariwalla"
+date: "July 13, 2016"
+output: html_document
+---
+
+
+require(lubridate)
+require(ggplot2)
+require(scales)
+require(doBy)
+require(plyr)
+require(dplyr)
+require(jpeg)
+#require(reshape2)
+require(tidyr)
+
+
+```{r}
+mr.df <- read.csv("data/mrdf.csv", stringsAsFactors = FALSE)
+tag.df <- read.csv("data/tagdf.csv", stringsAsFactors = FALSE)
+stn.df <- read.csv("data/stndf.csv", stringsAsFactors = F)
+```
+
+
+```{r}
+source("functions/dates_and_times_fun.R")
+mr.df  <- dates_and_times_fun(mr.df)
+tag.df <- dates_and_times_fun(tag.df)
+stn.df <- dates_and_times_fun(stn.df)
+```
+
+- format data and metadata - parse dates, set factors, create intervals 
+```{r}
+stn.df <- stn.df[!stn.df$station %in% c(350, 200, 100, 13.5),]
+```
+
+```{r}
+ow.stations <- c(10,11,12,13) #overwintering array
+outside.array <- c(1:9,14:22)
+```
+
+produce a chunk of code to filter through the detections, produce a data frame of tags that are leaving -- old way was manually go through and visually identify leaving events
+
+What is the best approach? create new data frames based on tag ids and prefrom the analysis on them? 
+```{r}
+# assume I will be working on a data frame containign and individual id. 
+# need station to be in numeric # create a stnnum column based on as numeric station column 
+# maybe use a bsb condensed data file, or mpd sturgeon day script.. 
+# to do this, I may need the arrival time and end time of fish at each station, thus sequential station information would be applicable. 
+  for(i in 1:(length(df)-1)){
+    if(df$stnnum[i] > df$stn )
+      ## dplyr to create list of new data frames based on ID's? 
+      
+  }
+}
+```
+-- manually figure out when fish leave, make a table - in and out scandal
+```{r}
+in.out <- NULL
+in.out$id[1] <- 48409
+in.out$leave[1] <- "2013-09-04 01:54:47"
+in.out$entry[1] <- "2013-10-09 05:33:48"
+
+in.out$id[2] <- 48410
+in.out$leave[2] <- "2012-09-06 08:47:45" # 05:47 local. Nautical Twilight starts at 05:20; Civil Twilight 05:47; Sunrise 06:27
+in.out$entry[2] <- "2012-10-24 04:29:54"
+
+in.out$id[3] <- 48410
+in.out$leave[3] <- "2013-08-02 02:19:07"
+in.out$entry[3] <- "2013-10-07 07:35:31"
+
+in.out$id[4] <- 48410
+in.out$leave[4] <- "2014-07-27 04:42:36"
+in.out$entry[4] <- "2014-09-09 06:38:27"
+
+in.out$id[5] <- 48411
+in.out$leave[5] <- "2013-08-29 23:59:23" # detected at station 5
+in.out$entry[5] <- "2013-10-07 07:15:13" # returned to station 2 then # 7
+
+in.out$id[6] <- 33158
+in.out$leave[6] <- "2013-08-18 02:16:48" # 2
+in.out$entry[6] <- "2013-10-03 05:17:30" # 2
+
+in.out$id[7] <- 33158
+in.out$leave[7] <- "2014-07-27 04:01:38" #1
+in.out$entry[7] <- "2014-08-30 04:03:51" #1
+
+in.out$id[8] <- 5729
+in.out$leave[8] <- "2013-08-26 23:54:01" #2
+in.out$entry[8] <- "2013-10-07 07:30:27" #2
+
+in.out$id[9] <- 5736 ## caught and released on 2013-08-29T04:38:00
+in.out$leave[9] <- "2013-09-27 23:29:33" #2 ### delayed exit could be due to tagging effect
+in.out$entry[9] <- "2013-10-14 01:46:18" #2
+
+in.out$leave <- ymd_hms(in.out$leave)
+in.out$entry <- ymd_hms(in.out$entry)
+in.out$duration <- round(as.period(new_interval(in.out$leave, in.out$entry), "seconds")/(3600*24), digits = 2)
+in.out$year <- year(in.out$leave)
+in.out <- data.frame(in.out)
+
+in.out.summary<- ddply(in.out, .(year), summarise, 
+      n = length(unique(id)),
+      mean_date_leave = mean(leave),
+      mean_date_return = mean(entry),
+      mean_duration = mean(duration),
+      sd = sd(duration))
+in.out.summary$sd_leave[1] <- sd(in.out$leave[in.out$year == 2012])/(3600*24)
+in.out.summary$sd_leave[2] <- sd(in.out$leave[in.out$year == 2013])/(3600*24)
+in.out.summary$sd_leave[3] <- sd(in.out$leave[in.out$year == 2014])/(3600*24)
+
+in.out.summary$sd_entry[1] <- sd(in.out$entry[in.out$year == 2012])/(3600*24)
+in.out.summary$sd_entry[2] <- sd(in.out$entry[in.out$year == 2013])/(3600*24)
+in.out.summary$sd_entry[3] <- sd(in.out$entry[in.out$year == 2014])/(3600*24)
+
+#year n     mean_date_leave    mean_date_return mean_duration        sd    sd_leave    sd_entry
+#1 2012 1 2012-09-06 08:47:45 2012-10-24 04:29:54        47.820        NA          NA          NA
+#2 2013 6 2013-08-28 12:58:56 2013-10-08 01:49:47        40.535 16.267704 18.87939290 18.87939290
+#3 2014 2 2014-07-27 04:22:07 2014-09-04 05:21:09        39.040  7.127636  0.02011653  0.02011653
+```
+
+-- circular plot of fish leave time. 
+```{r}
+in.out$leave.utc <- hour(in.out$leave)
+in.out$enter.utc <- hour(in.out$entry)
+in.out$leave.adt <- c(22, 5, 23, 1, 20, 23, 1, 20, 20)
+in.out$enter.adt <- c(2, 1, 4, 3, 4, 2, 1, 4, 22)
+
+### is it dark at time of entry/exit -- day, dark, nautical twilight -- nautical twilight used because astronomical twilight will be hampered by the anthropogenic lights; (plus it's the max twilight you can use )
+
+#http://www4.rncan.gc.ca/search-place-names/unique/CAZVS
+#http://www.nrc-cnrc.gc.ca/eng/services/sunrise/advanced.html
+
+
+in.out$leave.sun <- c("Dark", "Twilight", "Dark", "Dark", "Dark", "Dark","Dark", "Dark","Dark")
+in.out$enter.sun <- c("Dark", "Dark", "Dark","Dark","Dark","Dark","Dark","Dark","Dark")
+
+p1 <- ggplot(in.out, aes(x = leave.adt, fill = leave.sun)) + geom_histogram(breaks = seq(0,24), width = 1) + coord_polar(start = 0, direction = 1) + scale_x_continuous(breaks = seq(0,24), labels = seq(0,24)) + xlab("Departure Time (AST)") + ggtitle("Departure Time") + theme(axis.text = element_text(size = 30), axis.title = element_text(size =30), plot.title = element_text(size = 30)) +
+  scale_fill_manual(values = c("black", " dark grey")) + theme_bw()
+p1 
+
+p2 <- ggplot(in.out, aes(x = enter.adt))+  geom_histogram(breaks = seq(0,24), width = 1) + coord_polar(start = 0, direction = 1) + scale_x_continuous(breaks = seq(0,24), labels = seq(0,24)) + xlab("Return Time(AST)") + theme(legend.position = "none") + theme(axis.text = element_text(size = 30), axis.title = element_text(size =30), plot.title = element_text(size = 30)) +
+  scale_fill_manual(values = c("black", "dark grey")) + theme_bw()
+p2
+ ### the above iwll work better in ggplot if I tidy up the df
+
+```
+
+TIDY UP IN.OUT df
+
+```{r}
+# this is from Tidyr
+in.out2 <- in.out[-4] %>% gather(direction, sun, 9:10)
+in.out2 <- in.out2 %>% gather(event,time, 5:8)
+in.out2 <-  in.out2[-grep(c("utc"), in.out2$event),]
+
+in.out2 <- in.out2[in.out2$direction == "leave.sun" & in.out2$event == "leave.adt"|in.out2$direction == "enter.sun" & in.out2$event == "enter.adt",]
+
+in.out2$direction <- factor(in.out2$direction, levels = c("leave.sun", "enter.sun"))
+
+ ggplot(in.out2, aes(x = time, fill = sun))+  geom_histogram(breaks = seq(0,24), width = 1) + coord_polar(start = 0, direction = 1) + scale_x_continuous(breaks = seq(0,24), labels = seq(0,24)) + xlab("Time of Day (hour)") + ylab("Number of Events") + facet_grid(.~ direction)  + scale_fill_manual(values = c("black", "dark grey")) + theme_bw() + theme(axis.text = element_text(size = 25), axis.title = element_text(size =25), plot.title = element_text(size = 25), strip.background = element_blank(), strip.text = element_blank(), legend.title = element_blank())
+```
+
+```{r}
+source("functions/multiplot_fun.R")
+multiplot_fun(p1, p2, cols = 2)
+```
+
+
+```{r}
+ow3.10 <- read.csv("~/Desktop/Data/R/Data Files/MR_OWT3_10m.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+ow3.10 <- ow3.10[,1:2]
+names(ow3.10) <- c("date", "temp")
+ow3.10$ddate <- ymd(substr(ow3.10$date, 1, 10))
+ow3.10$date <- ymd_hms(ow3.10$date)
+ow3.10 <- ow3.10[ow3.10$date < ymd("2015-05-25"),]
+
+ow3.mean <- ow3.10 %>%
+  group_by(ddate) %>%
+  summarise(
+    mean_temp = mean(temp)
+    )
+
+ggplot(ow3.mean, aes(ddate, mean_temp)) + geom_line() 
+
+mr7 <- read.csv("~/Desktop/Data/R/Data Files/MR_07_2012-2015.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+mr7 <- mr7[,1:2]
+names(mr7) <- c("date", "temp")
+mr7$ddate <- ymd(substr(mr7$date, 1, 10))
+mr7$date <- ymd_hms(mr7$date)
+mr7 <- mr7[mr7$date < ymd("2015-05-25"),]
+
+mr7.mean <- mr7 %>%
+  group_by(ddate) %>%
+  summarise(
+    mean_temp = mean(temp)
+    )
+
+ggplot(mr7.mean[mr7.mean$ddate >= ymd("2014-11-01"),], aes(ddate, mean_temp)) + geom_line() + geom_vline(aes(xintercept = e.2014))
+
+
+## need to figure out what the temps are for the window of upriver migration 
+
+ s.2012 <- ymd(min(ow.df$last_albert[ow.df$winter == "2012-2013"])) # 2012-11-21
+ e.2012 <- ymd(max(ow.df$last_albert[ow.df$winter == "2012-2013"])) # 2012-11-25
+
+ s.2013 <- ymd(min(ow.df$last_albert[ow.df$winter == "2013-2014"])) # 2013-11-12
+ e.2013 <- ymd(max(ow.df$last_albert[ow.df$winter == "2013-2014"])) # 2013-11-21
+
+ s.2014 <- ymd(min(ow.df$last_albert[ow.df$winter == "2014-2015"])) # 2014-11-20
+ e.2014 <- ymd(max(ow.df$last_albert[ow.df$winter == "2014-2015"])) # 2014-11-22
+
+mean(mr7$temp[mr7$date >= s.2012 & mr7$date <= (e.2012+days(1))]) # 9.1°C
+mean(mr7$temp[mr7$date >= s.2013 & mr7$date <= (e.2013+days(1))]) # 8.6°C
+mean(mr7$temp[mr7$date >= s.2014 & mr7$date <= (e.2014+days(1))]) # 6.3°C
+
+p.2014.last.albert <- ggplot(mr7.mean, aes(ddate, mean_temp)) + geom_line() + geom_vline(xintercept = as.numeric(s.2012)) + geom_vline(xintercept = as.numeric(e.2012)) + geom_vline(xintercept = as.numeric(s.2013))+                                                                                                                                                                                                geom_vline(xintercept = as.numeric(e.2013)) + geom_vline(xintercept = as.numeric(s.2014)) + geom_vline(xintercept = as.numeric(e.2014)) + scale_x_datetime(breaks = date_breaks("1 months"), labels = date_format("%b %Y"), limit = c(ymd("2014-11-01"), ymd("2014-12-30")))
+
+p.2013.last.albert <- ggplot(mr7.mean, aes(ddate, mean_temp)) + geom_line() + geom_vline(xintercept = as.numeric(s.2012)) + geom_vline(xintercept = as.numeric(e.2012)) + geom_vline(xintercept = as.numeric(s.2013))+                                                                                                                                                                                                geom_vline(xintercept = as.numeric(e.2013)) + geom_vline(xintercept = as.numeric(s.2014)) + geom_vline(xintercept = as.numeric(e.2014)) + scale_x_datetime(breaks = date_breaks("1 months"), labels = date_format("%b %Y"), limit = c(ymd("2013-11-01"), ymd("2013-12-30")))
+
+p.2012.last.albert <- ggplot(mr7.mean, aes(ddate, mean_temp)) + geom_line() + geom_vline(xintercept = as.numeric(s.2012)) + geom_vline(xintercept = as.numeric(e.2012)) + geom_vline(xintercept = as.numeric(s.2013))+                                                                                                                                                                                                geom_vline(xintercept = as.numeric(e.2013)) + geom_vline(xintercept = as.numeric(s.2014)) + geom_vline(xintercept = as.numeric(e.2014)) + scale_x_datetime(breaks = date_breaks("1 months"), labels = date_format("%b %Y"), limit = c(ymd("2012-11-01"), ymd("2012-12-30")))
+```
+
+- let's look at the depth preferences
+```{r}
+depth.df <- df[df$id %in% c(5720:5743),]
+ggplot(depth.df, aes(date, depth)) + geom_point() + facet_wrap(~id)
+```
+

@@ -1,0 +1,172 @@
+---
+title: "BSB_MiraRiver_Left&Leaving_CircularPlots"
+author: "Colin F. Buhariwalla"
+date: "July 13, 2016"
+output: html_document
+---
+
+require(lubridate)
+require(ggplot2)
+require(scales)
+require(doBy)
+require(plyr)
+require(dplyr)
+require(jpeg)
+require(tidyr)
+
+
+```{r}
+source("functions/left_and_leaving_fun.R") # reads a cleaned up copy of the left and leaving dataframe
+ll <- left_and_leaving_fun(ll) # ohh yeah, lookit that shit
+```
+
+
+need to read in the NRCC sunrise sunset data       2013: Jul - Oct;      2014: June - Oct 
+```{r}
+#http://www4.rncan.gc.ca/search-place-names/unique/CAZVS
+#http://www.nrc-cnrc.gc.ca/eng/services/sunrise/advanced.html
+source("~/Desktop/Data/R/Functions/multiple_csv_import_bind_fun.R")
+rs <- multiple_csv_import_bind_fun("raw data", "sunrise") #rise set df
+```
+
+
+```{r}
+source("functions/NRC_sunrise_sunset_cleaning_fun.R")
+rs <- NRC_sunrise_sunset_cleaning_fun(rs)
+rs <- select(rs, date, ntstart, ntend, sunrise, sunset)
+```
+
+
+After this, go down to the bottom tidyr and see what that was about. Lesson of the day, don't use 'attach' function to load up data frame so that it doesn't have to be referecned while working with columns... causes a world of hurt. 
+
+#figure out when it's light or dark out.  
+```{r}
+ll <- ll %>%
+  gather(event_type, date_time, exit, enter) # create event and date_time colums (converting to long format using tidyr) of leaving events
+
+ll$date_time_atl <- with_tz(ll$date_time, "America/Halifax") # force the timezone to atlantic so that we can do a bit of fan-dangling later. 
+ll$detect_time <- round(hour(ll$date_time_atl)+(minute(ll$date_time_atl)/60), digits = 2) # need this for the plots, would somebody please think of the plots? 
+ll$event_type <- factor(ll$event_type, levels = c("exit", "enter"))
+ll$station <- ifelse(ll$event_type == "exit", ll$exit_stn,
+                     ifelse(ll$event_type == "enter", ll$enter_stn, "ERROR")) ## just to maintain a feel for the original data
+
+ll$date <- format(ll$date_time_atl, "%Y-%m-%d") # need this in order to left join with the sunrise/susnet time data frame 
+ll <- ll %>% select(id, event_type, date_time_atl, station, date, detect_time) %>% arrange(id, date_time_atl) # take out shit we dont need
+ll <- left_join(ll, rs, by = "date") # incorporate the required columns from NRC sun calculations
+
+ll$sun <- ifelse(ll$date_time_atl >= ll$ntstart & ll$date_time_atl <= ll$sunrise|ll$date_time_atl >= ll$sunset & ll$date_time_atl <= ll$ntend, "dusk",
+                 ifelse(ll$date_time_atl >= ll$sunrise & ll$date_time_atl <= ll$sunset, "light", "dark")) # If detection time is greater than nautical twilight (nt) start and before sunrise, or after sunset and before nt ends, it's considered dusk. If time is between sunset and sunrise, it's light out... otherwise it's dark. 
+
+```
+
+## maybe need to calculate the mean time it takes to swim with/against the tide to reach specific stations and incorporate them into the analysis 
+I want to produce a bunch of plots to show time of leaving events as it relates to: tide, day/night, hours before/after nautical twilight (search a good way to portray the hourly data ie how should I refeerence the 0/360 point)
+
+
+PLOTTING LIKE A MO-FO
+
+```{r}
+(p <- ggplot(ll, aes(x =detect_time, fill = sun))+  geom_histogram(breaks = seq(0,24), width = 1) + coord_polar(start = 0, direction = 1) + scale_x_continuous(breaks = seq(0,24), labels = seq(0,24)) + xlab("Time of Day (hour)") + ylab("Number of Events") + facet_grid(.~ event_type)  + scale_fill_manual(values = c("black", "dark grey", "bisque3")) + theme_bw() + theme(axis.text = element_text(size = 25), axis.title = element_text(size =25), plot.title = element_text(size = 25), strip.background = element_blank(), strip.text = element_blank(), legend.title = element_blank())
+) # exit is on the left, enter is on the right
+```
+
+
+
+produce a data summary 
+```{r}
+df <- left_and_leaving_fun(df) 
+
+df$year <- year(df$exit)
+
+df1 <- df %>% summarise(n = length(id),exit.mean = mean(exit), exit.sd_days = sd(exit)/(3600*24), enter.mean = mean(enter), enter.sd_days = sd(enter)/(3600*24), time_away.mean_days = mean(time_away)/(3600*24), time_away.sd_days = sd(time_away)/(3600*24), time_away_min_days = min(time_away)/(3600*24), time_away_max_days = max(time_away)/(3600*24), n_fish = n_distinct(id))
+
+df2 <- df %>% group_by(year) %>% summarise(n = length(id),exit.mean = mean(exit), exit.sd_days = sd(exit)/(3600*24), enter.mean = mean(enter), enter.sd_days = sd(enter)/(3600*24), time_away.mean_days = mean(time_away)/(3600*24), time_away.median_days = median(time_away)/(3600*24), time_away.sd_days = sd(time_away)/(3600*24), time_away_min_days = min(time_away)/(3600*24), time_away_max_days = max(time_away)/(3600*24), n_fish = n_distinct(id))
+
+View(df2)
+
+View(ll %>% group_by(id))
+View(df %>% group_by(id))
+```
+
+######
+Quick exploration come back to this ! 
+```{r}
+temp <- read_csv("~/Desktop/Data/R/Data Files/MR_07_2012-2015.csv")
+temp <- temp[,1:2]
+names(temp) <- c("date","tem")
+temp$date <- ymd_hms(date)
+
+int1 <- interval("2013-06-25 00:00:00", "2013-11-01 00:00:00")
+int2 <- interval("2014-06-25 00:00:00", "2014-11-01 00:00:00")
+
+tmp <- filter(temp, date %within% int1|date %within% int2)
+ll$utc <- ll$date_time_atl + hours(3)
+
+(ggplot(tmp, aes(date, tem)) + geom_line() + geom_vline(data = ll, aes(xintercept = as.numeric(utc), colour = factor(event_type))))
+
+```
+
+
+
+## below is junk? 
+
+```{r}
+ow3.10 <- read.csv("~/Desktop/Data/R/Data Files/MR_OWT3_10m.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+ow3.10 <- ow3.10[,1:2]
+names(ow3.10) <- c("date", "temp")
+ow3.10$ddate <- ymd(substr(ow3.10$date, 1, 10))
+ow3.10$date <- ymd_hms(ow3.10$date)
+ow3.10 <- ow3.10[ow3.10$date < ymd("2015-05-25"),]
+
+ow3.mean <- ow3.10 %>%
+  group_by(ddate) %>%
+  summarise(
+    mean_temp = mean(temp)
+    )
+
+ggplot(ow3.mean, aes(ddate, mean_temp)) + geom_line() 
+
+mr7 <- read.csv("~/Desktop/Data/R/Data Files/MR_07_2012-2015.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+mr7 <- mr7[,1:2]
+names(mr7) <- c("date", "temp")
+mr7$ddate <- ymd(substr(mr7$date, 1, 10))
+mr7$date <- ymd_hms(mr7$date)
+mr7 <- mr7[mr7$date < ymd("2015-05-25"),]
+
+mr7.mean <- mr7 %>%
+  group_by(ddate) %>%
+  summarise(
+    mean_temp = mean(temp)
+    )
+
+ggplot(mr7.mean[mr7.mean$ddate >= ymd("2014-11-01"),], aes(ddate, mean_temp)) + geom_line() + geom_vline(aes(xintercept = e.2014))
+
+
+## need to figure out what the temps are for the window of upriver migration 
+
+ s.2012 <- ymd(min(ow.df$last_albert[ow.df$winter == "2012-2013"])) # 2012-11-21
+ e.2012 <- ymd(max(ow.df$last_albert[ow.df$winter == "2012-2013"])) # 2012-11-25
+
+ s.2013 <- ymd(min(ow.df$last_albert[ow.df$winter == "2013-2014"])) # 2013-11-12
+ e.2013 <- ymd(max(ow.df$last_albert[ow.df$winter == "2013-2014"])) # 2013-11-21
+
+ s.2014 <- ymd(min(ow.df$last_albert[ow.df$winter == "2014-2015"])) # 2014-11-20
+ e.2014 <- ymd(max(ow.df$last_albert[ow.df$winter == "2014-2015"])) # 2014-11-22
+
+mean(mr7$temp[mr7$date >= s.2012 & mr7$date <= (e.2012+days(1))]) # 9.1°C
+mean(mr7$temp[mr7$date >= s.2013 & mr7$date <= (e.2013+days(1))]) # 8.6°C
+mean(mr7$temp[mr7$date >= s.2014 & mr7$date <= (e.2014+days(1))]) # 6.3°C
+
+p.2014.last.albert <- ggplot(mr7.mean, aes(ddate, mean_temp)) + geom_line() + geom_vline(xintercept = as.numeric(s.2012)) + geom_vline(xintercept = as.numeric(e.2012)) + geom_vline(xintercept = as.numeric(s.2013))+                                                                                                                                                                                                geom_vline(xintercept = as.numeric(e.2013)) + geom_vline(xintercept = as.numeric(s.2014)) + geom_vline(xintercept = as.numeric(e.2014)) + scale_x_datetime(breaks = date_breaks("1 months"), labels = date_format("%b %Y"), limit = c(ymd("2014-11-01"), ymd("2014-12-30")))
+
+p.2013.last.albert <- ggplot(mr7.mean, aes(ddate, mean_temp)) + geom_line() + geom_vline(xintercept = as.numeric(s.2012)) + geom_vline(xintercept = as.numeric(e.2012)) + geom_vline(xintercept = as.numeric(s.2013))+                                                                                                                                                                                                geom_vline(xintercept = as.numeric(e.2013)) + geom_vline(xintercept = as.numeric(s.2014)) + geom_vline(xintercept = as.numeric(e.2014)) + scale_x_datetime(breaks = date_breaks("1 months"), labels = date_format("%b %Y"), limit = c(ymd("2013-11-01"), ymd("2013-12-30")))
+
+p.2012.last.albert <- ggplot(mr7.mean, aes(ddate, mean_temp)) + geom_line() + geom_vline(xintercept = as.numeric(s.2012)) + geom_vline(xintercept = as.numeric(e.2012)) + geom_vline(xintercept = as.numeric(s.2013))+                                                                                                                                                                                                geom_vline(xintercept = as.numeric(e.2013)) + geom_vline(xintercept = as.numeric(s.2014)) + geom_vline(xintercept = as.numeric(e.2014)) + scale_x_datetime(breaks = date_breaks("1 months"), labels = date_format("%b %Y"), limit = c(ymd("2012-11-01"), ymd("2012-12-30")))
+```
+
+- let's look at the depth preferences
+```{r}
+depth.df <- df[df$id %in% c(5720:5743),]
+ggplot(depth.df, aes(date, depth)) + geom_point() + facet_wrap(~id)
+```
+

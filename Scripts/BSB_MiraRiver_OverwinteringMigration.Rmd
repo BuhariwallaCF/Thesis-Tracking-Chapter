@@ -1,0 +1,417 @@
+---
+title: "BSB_MiraRiver_OverWinteringMigrations"
+author: "Colin F. Buhariwalla"
+date: "July 13, 2016"
+output: html_document
+
+require(dplyr)
+
+---
+```{r}
+mr.df <- read.csv("data/mrdf.csv", stringsAsFactors = FALSE)
+tag.df <- read.csv("data/tagdf.csv", stringsAsFactors = FALSE)
+stn.df <- read.csv("data/stndf.csv", stringsAsFactors = F)
+```
+
+
+```{r}
+source("functions/dates_and_times_fun.R")
+mr.df  <- dates_and_times_fun(mr.df)
+tag.df <- dates_and_times_fun(tag.df)
+stn.df <- dates_and_times_fun(stn.df)
+```
+
+```{r}
+ow.stations <- c(11,12,13) # should 10 be ehre or below? # station 10 is outside the main overwintering area, more exposed to colder estuarine temperatures; the division around the small islands is the sand bars/shallows that isolates these two bodies of water... 
+outside.array <- c(1:10,14:22)
+```
+
+only want to use the necessary columns for the next bit. 
+```{r}
+mrdf <- mr.df %>% select(date,id, station, sensorvalue, receiver, id, sensorunit, ddate, day, month, year, unqdetecid)
+mrdf <- filter(mrdf, id != 48418) # this tag doesn't follow the other overwintering patterns
+rm(mr.df)
+```
+
+######## NEW WORKINGS TO MAKE THINGS PRETTY AND SMOOTH. ### TAKE OUT fish that was tagged within 30 days of OW migration? 
+
+1. Firstly, describe when fish leave Albert Bridge
+  x - i) last detection at albert in a given year
+  x - ii) last detection outside the overwintering area in a given year
+  
+
+2. When do fish Arrive in the OW area? 
+  i) are they detected in the OW area, and then move around outside? 
+      a. maybe use a roaming index to settle this out
+  x - ii) How long are they detected in the OW area before being detected outside? 
+  iii) last detection at Albert in 2012 = start of OW since no array 
+        a. figure out how long it takes for the fish to move from albert and settle into overwintering area
+        b. add a column to the table based on this estimate
+
+  iv) Describe physical Characteristics of the OW area
+
+3. How long is the overwintering period? 
+ x - i) Define what I will call the OW period
+ x   -    #a. Time first fish enters until the last fish leaves? 
+ x   -    b. Calculate it for individual fish?
+  
+4. Last Albert and then first out of OW area. this will encorporate 2012-2013 since receiver array was deployed early enough to catch the descent of fish? 
+   i) 
+   
+1) Fish Leaving Albert Bridge
+```{r}
+# i) Last Albert #### need to remove 48408 from 2014 - see page 101 in lab book for better explaination
+lab <- mrdf %>% group_by(year, id) %>% filter(station == 7, month >= 9, year < 2015, id != 48418) %>% slice(n()) # Last Albert Bridge; # slcie extracts the value/row in the nth position. So if you want the first value, you say slice(1), if you want the last value you say slice(n()) 
+lab <-  lab[-which(lab$id == 48408 & lab$year == 2014),]
+lab <- lab %>% filter(id !=5735) # filter out the 
+lab <- select(lab, id, last_albert = date, year)
+lab$event <- "Last Albert Bridge"
+
+lab_summary <- lab %>% group_by(year) %>% summarise(n = n(), mean = mean(last_albert), sd = as.numeric(sd(last_albert))/86400)
+
+#year     n                mean       sd
+#  2012    13 2012-11-24 11:29:21 3.751743
+#  2013    19 2013-11-15 12:54:13 4.129284
+#  2014    11 2014-11-18 19:08:41 4.447972
+
+# ii) Last Outside OW area  ********* ### FOR FULL EXPLAINATION OF LOGIC, SEE LAB BOOK # 3, pages 95-96/101-102
+loow <- mrdf %>% group_by(year, id) %>% filter(station %in% outside.array, year < 2015, month > 9) %>% slice(n())#month 9 is there because id 5735 fucks off in september 2013 (covered in left and leaving) and tag 5739 fucks off in may 2014
+loow$event <- "Last Outside Overwintering"
+loow <- full_join(loow,lab, by = c("id","year")) # let's include the last albert in this shizzle
+
+# keep the #48*** tags in the data. == loow avec. ## the tags below die before OW area is reached OR, as in the case of 48418, doesn't behave like the rest of the fish... 
+loowa <- loow[-which(loow$id %in% c(48408,48409.48418) & loow$year == 2014),]
+loow <- loowa
+##### remove 48408 & 48409 only; loows == loow sans  ## This would be used because the tags die several days after entereing the OW area. From here on out I will use these tags in the analysis. 
+#loows <- loow[-which(loow$id %in% c(48407:48418) & loow$year == 2014),] ## ==  loow sans
+```
+
+2) Fish showing up in the OW area
+```{r}
+#i) first overwintering ### need to define the period of overwintering - overwintering detection, which will occurr after the last outside overwintering area (LOOW)
+### i want to take the last outside OW area, match that line of the mrdf, and extract the next entry.
+####a for loop that goes through the last outside overwintering station DF and isolates the first overwintering date based on that.. 
+fowa <- NULL
+loowa <- loowa[loowa$year != 2012,]
+for(i in 1:length(loowa$date)){
+  poop <- mrdf %>% filter(id == loowa$id[i], year == loowa$year[i], date > loowa$date[i]) %>% slice(1)
+  fowa <- rbind(fowa, poop)
+  rm(poop)
+}
+anti_join(loowa, fowa, by = c("id", "year"))
+# tag id 48409
+# tag id 48408 ## these tags expired before they entered the ow area, but can be included as leaving albert bridge? check this out. 
+#48407 - tag dies on 2014-11-24 in the OW area
+#48408 - tag dies on 2014-11-21 at Albert Bridge - 
+#48409 - tag dies on 2014-11-26 at station 14 (old 12) above the Overwintering area - tag leaves albert, hits station 12 (old 11), and moves into station 11 (old 10), then hits stn 14...  
+#48410 - tag dies on 2014-11-25 in the OW area.. 
+#48411 - tag dies on 2014-11-26 in the OW area.. 
+
+#2014 tags arrival in the overwintering area
+#n = 7 - first OW (date hour/station)
+#5742 -  2014-11-20/14h/13
+#5743 -  2014-12-02/06h/12
+#33158 - 2014-11-21/19h/13
+#33159 - 2014-12-01/12h/12
+#33160 - 2014-11-24/03h/12
+#33161 - 2014-11-22/20h/13
+#33162 - 2014-11-24/01h/11
+
+##2014 48### tags arrival in the overwintering area
+#n = 3 - first OW (date hour/station)
+#48407 - 2014-11-20/01h/11
+#48410 - 2014-11-17/19h/12
+#48411 - 2014-11-10/15h/12
+
+#delete:
+#fows <- NULL
+#loows <- loows[loows$year != 2012,]
+#for(i in 1:length(loows$date)){
+#  poop <- mrdf %>% filter(id == loows$id[i], year == loows$year[i], date > loows$date[i]) %>% slice(1)
+#  fows <- rbind(fows, poop)
+#  rm(poop)
+#}
+```
+
+
+```{r}
+# first out. 
+fout <- mrdf %>% group_by(year, id) %>% filter(station %in% outside.array, month < 6) %>% slice(1) ## basically this gives me the first detection in the array outside my defined overwintering area (n = 3 stations.. see above) by year & tag; NOTE: the month less than 6 means that I will eliminate first detections from the tagging procedures.. this is a dummy/basic way of doing this, but it works
+```
+
+#### combine all events into a data file for plotting 
+```{r}
+lab_events <- select(lab, id, last_albert, year, event)
+names(lab_events) <- c("id", "date", "year", "event")
+
+lastoutside_events <- select(loow, id, date, year, event.x)
+names(lastoutside_events) <- c("id", "date", "year", "event")
+
+firstow_events <- select(fowa, id, date, year)
+firstow_events$event <- "First Overwintering"
+
+firstout_events <- select(fout, id, date, year)
+firstout_events$event <- "End Overwintering" # note: I am defining end of overwintering as the first detection on an outside receiver
+
+ow_events <- bind_rows(lab_events, lastoutside_events, firstout_events, firstow_events)
+
+write.csv(ow_events, "data/overwintering_events.csv", row.names = F)
+```
+
+CLEAN UP BELOW!!!! FIGURE OUT WHAT ITs DOING, IN WORDS... 
+
+### Experimentation zone ### ### FOR FULL EXPLAINATION OF LOGIC, SEE LAB BOOK # 3, pages 96-
+```{r}
+# I am going to bind together the last outside overwintering station (loow) with first station outside ow area (fout) to get an interval of overwintering and then subset the main data, based on those periods (why?). SHA-BAM! # Should maybe be defined as first detection on OW array to first detection on Outsided array (or last detection on ow array?). 
+fout$year_join <- fout$year - 1 
+loowa$year_join <- loowa$year # It is not necessary to do this with the sans ids 484## since they are are filtered out in the following inner join... this will result in only fish that make it through the wintering events.. 
+
+# GET the duration of each fish:   
+ow.timing <- inner_join(loowa, fout, by = c("year_join","id"))
+ow.timing$ow_duration <- ow.timing$date.y - ow.timing$date.x # days 
+
+#Summary stats on ow
+ow.length.stats <- ow.timing  %>% group_by(year_join) %>% summarise(mean_ow = mean(ow_duration), sd_ow = sd(ow_duration), mean_start = mean(date.x), sd_start = as.numeric(sd(date.x))/86400, mean_end = mean(date.y), sd_end = as.numeric(sd(date.y))/86400, mean_last_albert = mean(last_albert), sd_last_albert = as.numeric(sd(last_albert)))## SD units are all days. 
+write.csv(ow.length.stats, "Data/Tables/BSB_overwintering_stats_entirewinter_avec.csv",row.names = F)
+
+
+```
+
+```{r}
+## repeat but for all fish including those that were not captured descending the ow area (tag expiry)
+ow.timing.all.fish <- full_join(loowa, fout, by = c("year_join","id"))
+#ow.timing.all.fish <- mutate(ow.timing.all.fish, ow_duration = ow.timing$date.y - ow.timing$date.x)
+ow.timing.all.fish$ow_duration <- ow.timing.all.fish$date.y - ow.timing.all.fish$date.x
+
+ow.timing.all.fish$ow_migration <- ow.timing.all.fish$date.x - ow.timing.all.fish$last_albert
+
+ow.length.stats.all.fish <- ow.timing.all.fish %>% group_by(year_join) %>% summarise(number_full_ow = length(na.omit(ow_duration)), mean_ow = mean(na.omit(ow_duration)), sd_ow = sd(na.omit(ow_duration)), number_start_ow = length(na.omit(date.x)),  mean_start = mean(date.x), sd_start = as.numeric(sd(date.x))/86400, min_start_date = min(date.x), max_start_date = max(date.x), number_end_ow = length(na.omit(date.y)), mean_end = mean(na.omit(date.y)), sd_end = as.numeric(sd(na.omit(date.y)))/86400, min_end_date = min(na.omit(date.y)), max_end_date = max(na.omit(date.y)), mean_last_albert = mean(na.omit(last_albert)), sd_last_albert = as.numeric(sd(last_albert))/86400, mean_migration_length = mean(ow_migration)/86400, sd_migration_length = as.numeric(sd(ow_migration))/86400, min_lab = min(last_albert), max_lab = max(last_albert))
+
+write.csv(ow.length.stats.all.fish, "Data/Tables/BSB_overwintering_stats.csv",row.names = F)
+```
+
+### duration of ow. NOTE: dplyr was being a cunt about this.. "Error: unknown column 'date.x'"
+```{r}
+mean(ow.timing$ow_duration) # 160.2 days -- 160.19 ## now says 164.54
+sd(ow.timing$ow_duration) # 11.1 days -- 11.05 ## now says 8.64 days... wtf?
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### old stuff below here
+
+### calculate OW exit stations and arrival at Albert Bridge ####
+```{r}
+leave.fun <- function(data, year, fish){ ## will work on data after 2013 since OW arrays were deployed thenceforth 
+  
+  first.det.out <- head(data[data$year == year & data$id == fish & data$station %in% outside.array,],1) ## first detection in outside array
+  first.det.out$first.albert <- head(data$date[data$year == year & data$id == fish & data$station == 7],1) ## first albert bridge detection
+  last.ow.det <- tail(data[data$year == year & data$id == fish & data$date < first.det.out$date,],1) ## last detection in the OverWintering area 
+  end.ow <- merge(last.ow.det, first.det.out, by="id") # merge the two (long format, maybe want to make it short format)
+  
+  return(end.ow)
+  }
+  
+leave.master=NULL
+  for (i in unique(df$id)){
+    for(j in unique(df$year[df$year >= 2014])){
+  output=leave.fun(df,j,i)
+  leave.master=rbind(leave.master, output)
+}}
+
+leave.fun.2013 <- function(data, fish){ # a lot of unnecessary code here, but it could be decent 
+
+    first.det.out <- head(data[data$year == 2013 & data$month < 6 & data$id == fish & data$station == 7,],1)
+    last.ow.det <- head(data[data$year == 2013 & data$month < 6 & data$id == fish & data$station %in% outside.array,],1)
+    end.ow <- merge(last.ow.det, first.det.out, by ="id")
+    
+return(end.ow)
+}
+
+leave.master.2013 = NULL
+for(i in unique(df$id[df$year == 2013 & df$month <= 6])){
+  output = leave.fun.2013(df,i)
+  leave.master.2013 = rbind(leave.master.2013, output)
+}
+
+leave.master.2013$first.albert <- leave.master.2013$ddate.y ### for some reason when I tried to include a first albert column in leave.fun.2013 I got an error "replacement has 1 row, data has 0"... wtf? 
+
+leave.df <- rbind(leave.master, leave.master.2013)
+
+#leave.df <- leave.df[-c(4:6, 8:11,14:16,18:20)]
+leave.df <- leave.df[c(1,2,3,7,12,13,17,21,22)]
+
+names(leave.df) <- c("id", "last_ow_date", "vr2_ow", "last_ow_stn", "first_out_date", "vr2_out", "first_out_stn", "year", "first_albert")
+
+leave.df <- leave.df[!leave.df$id == 48418,]
+leave.df <- arrange(leave.df, year, id)
+
+leave.df$winter <- ifelse(leave.df$year == 2013, "2012-2013", ## create a winter category so we can figure out how to match up with entry data 
+                          ifelse(leave.df$year == 2014, "2013-2014",
+                                 ifelse(leave.df$year == 2015, "2014-2015", "ERROR")))
+
+```
+
+
+### calculate entrance to OW area and when they've left albert Bridge
+```{r}
+enter.fun <- function(data, year, fish){
+  
+  if(year == 2012){
+  last.detection.out <- tail(data[data$year == 2012 & data$id == fish & data$station %in% outside.array,], 1)
+  first.detection.in <- tail(data[data$year == 2012 & data$id == fish & data$station %in% outside.array,], 1)
+  last.albert <- tail(data[data$year == 2012 & data$id == fish & data$station == 7, c(7,1)], 1)
+  names(last.albert) <- c("id", "last_albert")
+  } else{
+    last.detection.out <- tail(data[data$year == year & data$id == fish & data$station %in% outside.array,], 1)
+    first.detection.in <- head(data[data$year == year & data$id == fish & data$date > last.detection.out$date & data$station %in% ow.stations,], 1)
+    last.albert <- tail(data[data$year == year & data$id == fish & data$station == 7, c(7,1)], 1)
+    names(last.albert) <- c("id", "last_albert") 
+  }
+
+  start.ow <- merge(last.detection.out, first.detection.in, by = "id")
+  start.ow <- merge(start.ow, last.albert, by = "id")
+  
+return(start.ow)
+       }
+
+enter.df <- NULL 
+for(i in unique(df$id)){ ### this takes 1 min 45 seconds on my (CBU) computer
+  for(j in unique(df$year)){
+    output = enter.fun(df, j, i)
+    enter.df <- rbind(enter.df, output)
+  }
+}
+
+
+enter.df <- enter.df[c(1,2,3,7,12,13,17,21,22)] ## change out 2 & 12 for 8 and 18
+names(enter.df) <- c("id", "out_date", "out_vr2", "out_station", "ow_date", "ow_vr2", "ow_station", "year", "last_albert")
+enter.df$winter <- ifelse(enter.df$year == 2012, "2012-2013",
+                          ifelse(enter.df$year == 2013, "2013-2014",
+                                 ifelse(enter.df$year == 2014, "2014-2015", "ERROR"))) 
+
+enter.df <-enter.df %>% ## for some reason the enter.fun produces duplicates likely to do with the if statement 
+              arrange(year, id) %>%
+              distinct()
+```
+
+#### Figure out how long fish were overwintering for #### - will define as from first detection in the OW area to the last detection in the ow area 
+```{r}
+ow.df <- merge(enter.df, leave.df, by = c("id","winter")) ## only 22 records for this 
+ow.df <- arrange(ow.df, winter)
+ow.df$ow_duration <- day(as.period(new_interval(ow.df$ow_date, ow.df$last_ow_date), "days"))
+ow.df$mig_duration <- as.period(new_interval(ow.df$last_albert, ow.df$ow_date))
+ow.summary <- ddply(ow.df, .(id, winter), summarise, 
+                    last.albert = last_albert,
+                    start.ow = ow_date,
+                    end.ow = last_ow_date,
+                    ow.duration = ow_duration,
+                    last.out = out_station,
+                    first.ow = ow_station,
+                    last.ow = last_ow_stn,
+                    first.out = first_out_stn)
+```
+
+#### figure out how long fish took to migrate upriver
+```{r}
+enter.df$mig_duration <- as.duration(new_interval(enter.df$last_albert, enter.df$ow_date)) 
+
+## need to convert all to hours or days from duration
+## NOTE **** CAN'T USE 2012 MIGRATION TIMES AS WE HAVE NO OW ARRAY WITHIN THE SYSTEM
+
+mig.dur <- ddply(enter.df, .(winter), summarise, 
+            n = length(unique(id)),
+            mean_mig_dur = mean(mig_duration)/(60*60*24),## days
+            sd_mig_dur = sd(mig_duration)/(60*60*24)) ## days
+
+#MIGRATION HOURS
+#   winter  n mean_mig_dur sd_mig_dur
+#1 2012-2013 14     77.23222  230.73869
+#2 2013-2014 19     77.20889  124.97298
+#3 2014-2015 10     30.32306   25.61724
+
+#MIGRATION DAYS
+#   winter  n mean_mig_dur sd_mig_dur
+#1 2012-2013 14     3.218009   9.614112
+#2 2013-2014 19     3.217037   5.207207
+#3 2014-2015 10     1.263461   1.067385
+
+```
+
+### defining periods for IR 
+```{r}
+ddply(leave.df, .(year), summarize, end.ow = median(last_ow_date))
+ddply(enter.df, .(year), summarise, 
+      n = length(unique(id)),
+      start.ow = mean.Date(ow_date),
+      sd.start.ow = sd(ow_date))
+
+entry.summary <- enter.df %>%
+                  group_by(year) %>%
+                   summarise(
+                    n = length(unique(id)),
+                    start_ow = mean(ow_date),
+                    last_albert = mean(last_albert))
+
+entry.summary$ow_sd[1] <- sd(enter.df$ow_date[enter.df$year == 2012])/(3600*24)# need to do this because dplyr/plyr can't handle converting SD to numbers... returns a date 
+entry.summary$ow_sd[2] <- sd(enter.df$ow_date[enter.df$year == 2013])/(3600*24)
+entry.summary$ow_sd[3] <- sd(enter.df$ow_date[enter.df$year == 2014])/(3600*24)
+
+entry.summary$last_albert_sd[1] <- sd(enter.df$last_albert[enter.df$year == 2012])/(3600*24)# need to do this because dplyr/plyr can't handle converting SD to numbers... returns a date 
+entry.summary$last_albert_sd[2] <- sd(enter.df$last_albert[enter.df$year == 2013])/(3600*24)
+entry.summary$last_albert_sd[3] <- sd(enter.df$last_albert[enter.df$year == 2014])/(3600*24)
+
+#year  n            start_ow         last_albert     ow_sd last_albert_sd
+#1 2012 14 2012-11-27 18:23:57 2012-11-23 22:17:08 10.341941       3.730628
+#2 2013 19 2013-11-18 18:06:45 2013-11-15 00:00:00  5.525523       4.242641
+#3 2014 10 2014-11-19 18:53:34 2014-11-18 00:00:00  4.804197       4.737557
+
+leave.df$descent_time_H <- difftime(leave.df$first_out_date, leave.df$last_ow_date, units = "hours")
+leave.df$descent_time_D <- difftime(leave.df$first_out_date, leave.df$last_ow_date, units = "days")
+
+  leave.summary <- leave.df[!leave.df$id == 48418,] %>%
+                  group_by(year) %>%
+                   summarise(
+                    n = length(unique(id)),
+                    end_ow = mean(last_ow_date))
+
+leave.summary$last_sd[1] <- sd(leave.df$last_ow_date[leave.df$year == 2013])/(3600*24)
+leave.summary$last_sd[2] <- sd(leave.df$last_ow_date[leave.df$year == 2014])/(3600*24)
+leave.summary$last_sd[3] <- sd(leave.df$last_ow_date[leave.df$year == 2015])/(3600*24)
+
+ow.summary[!ow.summary$id == 48418,] %>%
+  group_by(winter)%>%
+  summarise(
+    n = length(unique(id)),
+    mean_duration = mean(duration),
+    sd_duration = sd(duration))
+
+#year  n              end_ow  last_sd
+#1 2013  5 2013-04-20 07:20:32 3.528795
+#2 2014 11 2014-04-29 10:40:56 5.565831
+#3 2015  5 2015-05-08 21:06:06 3.135987
+
+#year  n            start_ow         last_albert     ow_sd last_albert_sd
+#1 2012 14 2012-11-27 18:23:57 2012-11-23 22:17:08 10.341941       3.730628
+#2 2013 19 2013-11-18 18:06:45 2013-11-15 00:00:00  5.525523       4.242641
+#3 2014 10 2014-11-19 18:53:34 2014-11-18 00:00:00  4.804197       4.737557
+
+# winter  n mean_duration sd_duration
+#1 2012-2013  5      146.0000    3.674235
+#2 2013-2014 11      160.6364    9.124393
+#3 2014-2015  5      166.2000    2.387467
+```
+
+- tagging info 

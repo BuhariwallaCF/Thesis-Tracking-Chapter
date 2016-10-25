@@ -14,118 +14,27 @@ require(reshape2)
 
 require(ggmap)
 
-#### old but useful code ####
-#------------> READING IN AND CLEANING **************************
-
-## only use if importing from individual CSV FILES: 
-#files <- dir("/Users/colinbuhariwalla/Desktop/Data/Vemco/VUE/2014/csv", full.name = TRUE) # get the names of the csv files 
-#vr2 <- files[grep("VR2", files)] #make a list of all vr2ws
-#vr2.01 <- lapply(vr2, "read.csv", header = TRUE, dec = ".", stringsAsFactors = FALSE)
-#ow.df.a <- do.call("rbind", vr2.01)
-#ow.df.a$Date.and.Time..UTC. <- ymd_hms(paste(ow.df.a$Date.UTC., ow.df.a$Time.UTC., sep = " "), tz = "UTC")
-#ow.df.a <- ow.df.a[,c(14,5:13)] ## need to clean it up to match the columns to rbind the other csv outputs
-#colnames(ow.df.a)[c(4,5,6,7,8)] <- c("Transmitter.Name","Transmitter.Serial","Sensor.Value","Sensor.Unit","Station.Name") ## need to match up the CSVs' colnames
-
-#files below have a different number of columns 
-#files2 <- dir("/Users/colinbuhariwalla/Desktop/Data/Vemco/VUE/2014/csv/different output", full.name = TRUE) # get the names of the csv files 
-#vr2.b <- files2[grep("VR2", files2)] #make a list of all vr2ws
-#vr2.01.b <- lapply(vr2.b, "read.csv", header = TRUE, dec = ".", stringsAsFactors = FALSE)
-#ow.df.b <- do.call("rbind", vr2.01.b)
-#ow.df.b[,1] <- ymd_hms(ow.df.b[,1], tz = "UTC")
+mr.df <- read.csv("data/mrdf.csv", stringsAsFactors = FALSE)
+tag.df <- read.csv("data/tagdf.csv", stringsAsFactors = FALSE)
+stn.df <- read.csv("data/stndf.csv", stringsAsFactors = F)
 
 
-### now combine them all 
-#ow.df <- rbind(ow.df.a, ow.df.b) # join two dataframes by rows
-#ow <- ow.df[-c(4,5,9,10)]
-
-#ow <- read.csv("~/Desktop/Data/Vemco/VUE/Database export/2014-05-24/MiraRiver-db_timecorrected_2014-05-24.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
-
-#### reading in and cleaning up data frame ####
-#ow.1 <- read.csv("~/Desktop/Data/Vemco/VUE/Database export/2014-07-16/VueExport_depthTags_2014-07-16.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
-#ow.2 <- read.csv("~/Desktop/Data/Vemco/VUE/Database export/2014-07-16/VueExport_longLifeTags_2014-07-16.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
-
-# newer iterations
-#ow.1 <- read.csv("~/Desktop/Data/vm - shared/VUE/Exports/VueExport_longLifeTags_2014-09-23.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
-#ow.2 <- read.csv("~/Desktop/Data/vm - shared/VUE/Exports/VueExport_depthTags_2014-09-23.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
 
 
-#ow <- rbind(ow.1, ow.2, header = TRUE)
+source("functions/dates_and_times_fun.R")
+mr.df  <- dates_and_times_fun(mr.df)
+tag.df <- dates_and_times_fun(tag.df)
+stn.df <- dates_and_times_fun(stn.df)
 
-ow <- read.csv("~/Desktop/Data/vm - shared/VUE/Exports/VueExport_timeCorrectedDB_2014-09-25.csv", stringsAsFactors = FALSE, header = TRUE, dec = ".")
+# format data and metadata - parse dates, set factors, create intervals 
 
-ow <- ow[-c(4,5,9,10)]
-
-names(ow) <-c("date","vr2","tag", "depth", "unit", "station")
-
-ow$id <- as.character(unlist(strsplit(ow$tag, split = "-"))[3*(1:length(ow$tag))]) # seperate tags into id's ### MAYBE REMOVE THE FACTOR LEVEL HERE AND ADD IT SOMEWHERE ELSE.. WHEN I DELETE ALL THE EXTRANEOUS TAGS
-ow$vr2 <- as.character(unlist(strsplit(ow$vr2, split = "-"))[2*(1:length(ow$vr2))]) # seperate vr2s to sn
-
-#clean up workspace 
-#remove(ow.df.a, ow.df.b, files, files2, vr2, vr2.01, vr2.01.b, vr2.b, ow.df)
-
-#create backup
-ow.base <- ow
-
-tags <- read.csv("~/Desktop/Data/OTN/Cape Breton/Metadata/Tagging/combined/BSB_tagging.csv", stringsAsFactors = FALSE, skip = 4, header = TRUE, sep = ",", dec = "." )# create a list of tags from a csv file
-tag.id <- as.list(as.character(na.omit(tags$TAG_ID_CODE)))
-remove(tags)
-
-ow <- ow[ow$id %in% tag.id,] # subset the ow df based on my tag id's ## eliminated 2144 detections
-# difference = 23917 detections that aren't my tags -> length(ow.base$date)-length(ow$date)
-
-  
-# sensor conversion == y= mx + b == .43970x -1.7587
-ow$depth <- 0.43970*ow$depth-1.7587 #need to set to 1 decimal place? 
-ow$unit <- "m"
-
-ow$date <- ymd_hms(ow$date, tz = "UTC")
-ow$day <- day(ow$date)
-ow$month <- month(ow$date)
-ow$year <- year(ow$date)
-
-ow.base <- ow
-
-#### Renaming the stations ####
-ow$station <- ifelse(ow$vr2 == "110142", "001",
-                      ifelse(ow$vr2 == "112793" & ow$date >= ymd_hms("2014-05-07 23:43:46"), "001",
-                             ifelse(ow$vr2 == "112788", "002", 
-                                    ifelse(ow$vr2 == "113681" & ow$date <= ymd_hms("2013-07-31 00:00:00"), "003",
-                                           ifelse(ow$vr2 == "113681" & ow$date >= ymd_hms("2013-08-01 23:20:00"), "004",
-                                                  ifelse(ow$vr2 == "112789" & ow$date <= "2013-07-23 18:15:00", "004",
-                                                  ifelse(ow$vr2 == "113678" & ow$date < ymd_hms("2014-05-08 19:30:00"), "005",
-                                                         ifelse(ow$vr2 == "105998" & ow$date < ymd_hms("2013-11-09 20:52:00"), "006",
-                                                                ifelse(ow$vr2 == "112794", "007",
-                                                                       ifelse(ow$vr2 == "112790", "008",
-                                                                              ifelse(ow$vr2 == "112793" & ow$date < ymd_hms("2014-05-07 23:40:00"), "009",
-                                                                                     ifelse(ow$vr2 == "112792" & ow$date < ymd_hms("2014-05-08 20:00:00"), "010",
-                                                                                            ifelse(ow$vr2 == "113682", "011",
-                                                                                                   ifelse(ow$vr2 == "112791" & ow$date < ymd_hms("2013-05-19 11:10:00"), "011.5",
-                                                                                                          ifelse(ow$vr2 == "112791" & ow$date > ymd_hms("2013-06-12 20:57:00"), "011.5",
-                                                                                                                ifelse(ow$vr2 == "113684" & ow$date < ymd_hms("2014-05-08 20:30:00"), "012",
-                                                                                                                       ifelse(ow$vr2 == "105998" & ow$date >= ymd_hms("2013-11-09 20:52:00"), "011.5",
-                   ifelse(ow$vr2 == "113693", "013",
-                          ifelse(ow$vr2 == "105999" & ow$date <= ymd_hms("2013-07-23 18:03:00"), "013.5",
-                                 ifelse(ow$vr2 == "105999" & ow$date > ymd_hms("2013-07-23 18:03:00"), "NA",
-                          ifelse(ow$vr2 == "113690", "014",
-                                 ifelse(ow$vr2 == "113678" & ow$date > ymd_hms("2014-05-08 19:30:00"), "015",
-                                       ifelse(ow$vr2 == "112792" & ow$date > ymd_hms("2014-05-08 20:00:00"), "016",
-                                              ifelse(ow$vr2 == "113684" & ow$date > ymd_hms("2014-05-08 20:30:00"), "017",
-                                                     ifelse(ow$vr2 == "112791" & ow$date >= ymd_hms("2013-05-19 11:20:00") & ow$date <= ymd_hms("2013-06-12 20:50:00"), "018",
-                                                            ifelse(ow$vr2 == "105998" & ymd_hms("2013-06-01 03:50:00") >= ow$date & ow$date < ymd_hms("2013-06-12 21:20:00"), "019", "ERROR"
-                                                                   ))))))))))))))))))))))))))                  
-                                                                                       
-
-ow <- ow[!ow$station == "NA",] ## this removes the range test detections out of the mix (used tag 33162 during range test)
-
-ow <- arrange(ow, date)
-
-#### Export cleaned database as a CSV ####
-# Will be used for OTN SANDBOX, to filter out suspect detections
-# !!!!! need to make sure we don't filter in this code (see line 70)
-# !!!!! ensure time adjustment is applied to newly imported VRLs 
+stn.df <- stn.df[!stn.df$station %in% c(350, 200, 100, 13.5),]
 
 
-ow.base <- ow
+
+
+
+
 
 
 
