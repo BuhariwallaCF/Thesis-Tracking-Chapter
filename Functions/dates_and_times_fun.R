@@ -10,7 +10,14 @@ dates_and_times_fun <- function(df){
   require(lubridate)
   
   if(length(df$date)>= 1){
+    
     df$date <- ymd_hms(df$date, tz = "UTC")
+    df$ddate <- ymd(substr(df$date, 1,10), tz = "UTC")
+    df$yday <- yday(df$date)
+    df$year <- year(df$date)
+    df$month <- month(df$date)
+    df$day <- day(df$date)
+    df$time <- substr(df$date, 12, 19)
   }
   if(length(df$depl_date) >= 1){
     df$depl_date <- ymd_hms(df$depl_date, tz = "UTC")

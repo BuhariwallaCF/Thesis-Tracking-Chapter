@@ -84,11 +84,6 @@ adf$winter <- ifelse(adf$month > 6, paste(adf$year, adf$year+1, sep="-"), paste(
 adf <- adf %>% group_by(ddate) %>% mutate(mtemp = mean(temp))
 adf$event <- factor(adf$event, levels = c("Last Albert Bridge", "Last Outside Overwintering", "First Overwintering","End Overwintering", "hobo")) 
 
-# doesn't produce much fun. 
-ggplot(adf, aes(y= temp)) + geom_line(data = adf[adf$month %in% c(10:12,1:5),], aes(x = date)) + 
-  geom_point(data = adf[adf$event != "hobo",], aes(x = date, shape = event, size = 5, colour = event)) + 
-  facet_grid(winter~., scales="free_x")
-
 
 #### PLOT: Mean Daily Temperature (°C) vs Date of EVENTs (last albert, first ow, first outside) ####
 daily12 <- filter(adf, winter == "2012-2013")
@@ -107,37 +102,13 @@ p3 <- ggplot(data = filter(daily14, month %in% c(10:12,4,5)), aes(ddate, mtemp))
   geom_point(data = filter(daily14, event %nin% c("hobo", "Last Outside Overwintering")),aes(shape = event, size = 5), position = "jitter") + scale_shape_manual(values=c(20, 8, 3)) + theme_bw() + xlab("Date") + ylab("") +
   theme(legend.position = "none", legend.title = element_blank()) + scale_x_date(breaks = pretty_breaks(8),labels = date_format("%B"), limits = c(ymd("2014-10-01"), ymd("2015-05-31"))) + guides(size = F)
 
-multiplot_fun(p1, p2, p3)
-
 source("functions/multiplot_fun.R")
 multiplot_fun(p1, p2, p3)
 
 
 
-##### Figuring out discrepancies in the hobo temp files #####
 
-multiple_files_fun <- function(file.path.string, common.string.in.file.name){
-  
-  files <- dir(file.path.string, full.name = TRUE)
-  det.I <- files[grep(common.string.in.file.name, files)]
-  det.II <- lapply(det.I, "read.csv", header = TRUE, stringsAsFactors = FALSE, dec = ".") ## will delete the header
-  output <- do.call("rbind", det.II) ## combine all csv files into one df
-  
-  return(output)
-  
-  rm(det.I, det.II, files)
-  
-}
 
-# can delete below when done 
-# need to see what the fuck is going on with the hobo temp files. need to keep tdf
-source("functions/multiple_csv_import_bind_fun.R")
-t <- multiple_csv_import_bind_fun("raw data/", "MR07t") ### NOTE HOBO TEMP FILES NEED TO BE CLEANED UP IN EXCEL.
 
-names(t) <- c("date", "temp")
-source("functions/dates_and_times_fun.R")
-t <- dates_and_times_fun(t)
 
-t <- arrange(t, date)
-tdf <- arrange(tdf, date)
-
+ 
